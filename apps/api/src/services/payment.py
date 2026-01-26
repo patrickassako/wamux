@@ -73,3 +73,65 @@ class PaymentService:
             except Exception as e:
                 logger.error(f"Unexpected error in PaymentService: {str(e)}")
                 raise e
+
+    @classmethod
+    def verify_webhook_signature(cls, payload: dict) -> bool:
+        """
+        Verify the signature of the My-CoolPay callback.
+        
+        Signature Formula: 
+        md5(transaction_ref + transaction_type + transaction_amount + transaction_currency + transaction_operator + private_key)
+        
+        Args:
+            payload: The dictionary containing the callback data.
+            
+        Returns:
+            bool: True if signature matches, False otherwise.
+        """
+        import hashlib
+        
+        private_key = settings.coolpay_private_key
+        if not private_key:
+            logger.error("COOLPAY_PRIVATE_KEY is not configured")
+            return False
+            
+        required_fields = [
+            "transaction_ref", "transaction_type", "transaction_amount", 
+            "transaction_currency", "transaction_operator", "signature"
+        ]
+        
+        # Check presence of required fields
+        if not all(k in payload for k in required_fields):
+            logger.warning("Missing fields in webhook payload for signature verification")
+            return False
+            
+        # Construct data string for hashing
+        # Note: Integers should be stringified without leading zeros.
+        # My-CoolPay documentation says "Numbers should be converted to strings WITHOUT non-significant zeros".
+        # Python's str(int) does exactly that.
+        
+        data_string = (
+            f"{payload.get('transaction_ref', '')}"
+            f"{payload.get('transaction_type', '')}"
+            f"{str(payload.get('transaction_amount', ''))}"
+            f"{payload.get('transaction_currency', '')}"
+            f"{payload.get('transaction_operator', '')}"
+            f"{private_key}"
+        )
+        
+        # Calculate MD5 hash
+        calculated_signature = hashlib.md5(data_string.encode('utf-8')).hexdigest()
+        
+        # Compare (case-insensitive usually safe for hex, but docs imply lowercase often)
+        # Provided signature in example is lowercase.
+        received_signature = payload.get("signature", "").lower()
+        
+        is_valid = calculated_signature.lower() == received_signature
+        
+        if not is_valid:
+            logger.warning(
+                f"Invalid signature. Calc: {calculated_signature} vs Recv: {received_signature}. "
+                f"Data: {data_string.replace(private_key, '***')}"
+            )
+            
+        return is_valid
