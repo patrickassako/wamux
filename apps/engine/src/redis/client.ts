@@ -5,12 +5,16 @@ let redisClient: Redis | null = null;
 
 export async function getRedisClient(): Promise<Redis> {
     if (!redisClient) {
-        const host = process.env.ENGINE_REDIS_HOST || 'localhost';
-        const port = process.env.ENGINE_REDIS_PORT || '6379';
-        const password = process.env.ENGINE_REDIS_PASSWORD || process.env.REDIS_PASSWORD;
-        // Check if REDIS_URL is strictly provided, otherwise build it. 
-        // Note: We don't use the 'url' var for new Redis() if we want to mix options easily, 
-        // but ioredis handles the first arg as url string well.
+        // Resolve Host: Check specific, then standard (Redis), then Railway convention (REDISHOST)
+        const host = process.env.ENGINE_REDIS_HOST || process.env.REDIS_HOST || process.env.REDISHOST || 'localhost';
+
+        // Resolve Port: Check specific, then standard, then Railway convention
+        const port = process.env.ENGINE_REDIS_PORT || process.env.REDIS_PORT || process.env.REDISPORT || '6379';
+
+        // Resolve Password: Check specific, then standard, then Railway convention
+        const password = process.env.ENGINE_REDIS_PASSWORD || process.env.REDIS_PASSWORD || process.env.REDISPASSWORD;
+
+        // Check if REDIS_URL is strictly provided
         const connectionUrl = process.env.REDIS_URL || `redis://${host}:${port}`;
 
         logger.info({
