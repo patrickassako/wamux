@@ -4,6 +4,7 @@ Billing API endpoints for subscription management
 import os
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request, Header
+from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timedelta
 
