@@ -134,7 +134,7 @@ async def get_plans():
     return plans
 
 
-@router.get("/subscription", response_model=SubscriptionResponse, response_model_by_alias=True)
+@router.get("/subscription", response_model=Optional[SubscriptionResponse], response_model_by_alias=True)
 async def get_subscription(user=Depends(get_current_user)):
     """Get current user's subscription"""
     try:
@@ -147,7 +147,7 @@ async def get_subscription(user=Depends(get_current_user)):
             .execute()
         
         if not result.data:
-            raise HTTPException(status_code=404, detail="No active subscription found. Please activate a plan.")
+            return None
         
         return SubscriptionResponse(**result.data[0])
     except HTTPException:
@@ -158,7 +158,7 @@ async def get_subscription(user=Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"Failed to fetch subscription: {str(e)}")
 
 
-@router.get("/usage", response_model=UsageResponse, response_model_by_alias=True)
+@router.get("/usage", response_model=Optional[UsageResponse], response_model_by_alias=True)
 async def get_usage(user=Depends(get_current_user)):
     """Get current usage statistics"""
     try:
@@ -171,7 +171,7 @@ async def get_usage(user=Depends(get_current_user)):
             .execute()
         
         if not result.data:
-            raise HTTPException(status_code=404, detail="Subscription not found")
+            return None
         
         sub = result.data[0]
         messages_used = sub.get("messages_used", 0)
