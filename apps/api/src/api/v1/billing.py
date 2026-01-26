@@ -93,6 +93,27 @@ async def subscribe(
 @router.get("/plans", response_model=list[PlanInfo])
 async def get_plans():
     """Get all available subscription plans"""
+    try:
+        supabase = get_supabase_client()
+        result = supabase.table("plans").select("*").execute()
+        
+        if result.data:
+            plans = []
+            for plan_data in result.data:
+                plans.append(PlanInfo(
+                    name=plan_data["name"],
+                    sessions_limit=plan_data["sessions_limit"],
+                    message_limit=plan_data["message_limit"],
+                    rate_limit_per_minute=plan_data["rate_limit_per_minute"],
+                    price_monthly=plan_data["price_monthly"],
+                    price_yearly=plan_data["price_yearly"],
+                    features=plan_data["features"]
+                ))
+            return plans
+    except Exception as e:
+        print(f"Error fetching plans from DB: {e}")
+
+    # Fallback to hardcoded constants if DB fetch fails
     plans = []
     for plan_type, config in PLAN_LIMITS.items():
         plans.append(PlanInfo(
