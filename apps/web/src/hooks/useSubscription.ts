@@ -21,11 +21,11 @@ interface Usage {
 
 interface Plan {
     name: string;
-    sessions_limit: number;
-    message_limit: number;
-    rate_limit_per_minute: number;
-    price_monthly: number;
-    price_yearly: number;
+    sessionsLimit: number;
+    messageLimit: number;
+    rateLimitPerMinute: number;
+    priceMonthly: number;
+    priceYearly: number;
     features: string[];
 }
 
@@ -40,11 +40,12 @@ export function useSubscription() {
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL;
             const response = await fetch(`${apiUrl}/api/v1/billing/plans`);
-            if (!response.ok) throw new Error('Failed to fetch plans');
+            if (!response.ok) throw new Error('Failed to fetch available plans');
             const data = await response.json();
             setPlans(data);
         } catch (err: any) {
             console.error('Error fetching plans:', err);
+            setError(err.message);
         }
     };
 

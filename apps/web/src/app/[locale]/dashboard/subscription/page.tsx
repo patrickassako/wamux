@@ -134,8 +134,8 @@ export default function SubscriptionPage() {
                         <div
                             key={plan.name}
                             className={`p-6 rounded-2xl flex flex-col justify-between transition-all border ${plan.name === 'pro'
-                                    ? 'bg-[#25D366]/5 border-[#25D366] shadow-[0_0_20px_rgba(37,211,102,0.1)]'
-                                    : 'bg-[#111] border-gray-800 hover:border-gray-700'
+                                ? 'bg-[#25D366]/5 border-[#25D366] shadow-[0_0_20px_rgba(37,211,102,0.1)]'
+                                : 'bg-[#111] border-gray-800 hover:border-gray-700'
                                 }`}
                         >
                             <div className="mb-6">
@@ -146,7 +146,7 @@ export default function SubscriptionPage() {
                                     )}
                                 </div>
                                 <div className="flex items-baseline gap-1 mb-4">
-                                    <span className="text-3xl font-bold text-white">${plan.price_monthly}</span>
+                                    <span className="text-3xl font-bold text-white">${plan.priceMonthly}</span>
                                     <span className="text-gray-500 text-sm">{tp('perMonth')}</span>
                                 </div>
                                 <ul className="space-y-3">
@@ -169,8 +169,8 @@ export default function SubscriptionPage() {
                                 <button
                                     onClick={() => upgradePlan(plan.name)}
                                     className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors ${plan.name === 'pro'
-                                            ? 'bg-[#25D366] hover:bg-[#20bd5a] text-white'
-                                            : 'border border-[#25D366] text-[#25D366] hover:bg-[#25D366]/10'
+                                        ? 'bg-[#25D366] hover:bg-[#20bd5a] text-white'
+                                        : 'border border-[#25D366] text-[#25D366] hover:bg-[#25D366]/10'
                                         }`}
                                 >
                                     {t('upgradeTo', { plan: plan.name })}
