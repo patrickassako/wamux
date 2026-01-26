@@ -43,7 +43,8 @@ COPY --from=builder /build/dist ./dist
 RUN mkdir -p /app/sessions && chown -R node:node /app && chmod 777 /app/sessions
 
 # Switch to non-root user
-USER node
+# Switch to non-root user - DISABLED to fix Volume Permission issues on Railway
+# USER node
 
 # Health check (Redis connection)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
