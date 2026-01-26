@@ -5,6 +5,7 @@ import os
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from typing import Optional
+from datetime import datetime, timedelta
 
 from ...core.auth import get_current_user
 from ...core.supabase import get_supabase_service_client as get_supabase_client
@@ -26,6 +27,67 @@ STRIPE_PRICE_IDS = {
     PlanType.PLUS: os.getenv("STRIPE_PRICE_PLUS"),
     PlanType.BUSINESS: os.getenv("STRIPE_PRICE_BUSINESS"),
 }
+
+
+
+class SubscribeRequest(BaseModel):
+    """Request to change subscription plan"""
+    plan: PlanType
+
+
+@router.post("/subscribe", response_model=SubscriptionResponse)
+async def subscribe(
+    request: SubscribeRequest,
+    user=Depends(get_current_user)
+):
+    """Subscribe to a plan (handles activation and downgrades)"""
+    supabase = get_supabase_client()
+    
+    if request.plan == PlanType.FREE:
+        # Handle manual activation or downgrade to free
+        free_config = PLAN_LIMITS[PlanType.FREE]
+        
+        # Get current subscription to check if we need to cancel Stripe
+        sub_result = supabase.table("subscriptions")\
+            .select("stripe_subscription_id")\
+            .eq("user_id", str(user.id))\
+            .limit(1)\
+            .execute()
+            
+        if sub_result.data and sub_result.data[0].get("stripe_subscription_id"):
+            # Cancel Stripe subscription
+            stripe_sub_id = sub_result.data[0]["stripe_subscription_id"]
+            try:
+                stripe.Subscription.delete(stripe_sub_id)
+            except Exception as e:
+                print(f"Error canceling stripe subscription: {e}")
+        
+        # Free plan expires after 3 days
+        expiry = (datetime.now() + timedelta(days=3)).isoformat()
+        
+        upsert_data = {
+            "user_id": str(user.id),
+            "plan": "free",
+            "status": "active",
+            "stripe_subscription_id": None,
+            "message_limit": free_config["message_limit"],
+            "rate_limit_per_minute": free_config["rate_limit_per_minute"],
+            "current_period_end": expiry,
+            "sessions_limit": free_config["sessions_limit"]
+        }
+        
+        if sub_result.data:
+            updated_sub = supabase.table("subscriptions").update(upsert_data).eq("user_id", str(user.id)).execute()
+        else:
+            updated_sub = supabase.table("subscriptions").insert(upsert_data).execute()
+        
+        return SubscriptionResponse(**updated_sub.data[0])
+    else:
+        # For paid plans, redirect to checkout
+        raise HTTPException(
+            status_code=400, 
+            detail="To upgrade to a paid plan, please use the /checkout endpoint"
+        )
 
 
 @router.get("/plans", response_model=list[PlanInfo])
@@ -57,17 +119,7 @@ async def get_subscription(user=Depends(get_current_user)):
         .execute()
     
     if not result.data:
-        # Create default free subscription if none exists
-        default_sub = {
-            "user_id": str(user.id),
-            "plan": "free",
-            "status": "active",
-            "message_limit": 100,
-            "messages_used": 0,
-            "rate_limit_per_minute": 10
-        }
-        insert_result = supabase.table("subscriptions").insert(default_sub).execute()
-        return SubscriptionResponse(**insert_result.data[0])
+        raise HTTPException(status_code=404, detail="No active subscription found. Please activate a plan.")
     
     return SubscriptionResponse(**result.data[0])
 
@@ -105,7 +157,7 @@ async def create_checkout_session(
 ):
     """Create a Stripe checkout session for upgrading"""
     if request.plan == PlanType.FREE:
-        raise HTTPException(status_code=400, detail="Cannot checkout for free plan")
+        raise HTTPException(status_code=400, detail="Cannot checkout for free plan. Use /subscribe endpoint.")
     
     price_id = STRIPE_PRICE_IDS.get(request.plan)
     if not price_id:
@@ -220,7 +272,9 @@ async def stripe_webhook(
             "stripe_subscription_id": subscription_id,
             "stripe_customer_id": customer_id,
             "message_limit": plan_config["message_limit"],
-            "rate_limit_per_minute": plan_config["rate_limit_per_minute"]
+            "rate_limit_per_minute": plan_config["rate_limit_per_minute"],
+            "current_period_start": datetime.now().isoformat(), # approximate
+            "current_period_end": (datetime.now().replace(month=datetime.now().month+1)).isoformat() # approximate
         }).eq("user_id", user_id).execute()
     
     # Handle subscription updates
@@ -239,8 +293,8 @@ async def stripe_webhook(
         
         supabase.table("subscriptions").update({
             "status": status_map.get(status, "active"),
-            "current_period_start": subscription["current_period_start"],
-            "current_period_end": subscription["current_period_end"]
+            "current_period_start": datetime.fromtimestamp(subscription["current_period_start"]).isoformat(),
+            "current_period_end": datetime.fromtimestamp(subscription["current_period_end"]).isoformat()
         }).eq("stripe_subscription_id", stripe_sub_id).execute()
     
     # Handle subscription deletion

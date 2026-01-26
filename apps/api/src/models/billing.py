@@ -8,6 +8,7 @@ from enum import Enum
 
 
 class PlanType(str, Enum):
+    FREE = "free"
     BASIC = "basic"
     PRO = "pro"
     PLUS = "plus"
@@ -28,6 +29,19 @@ class BillingPeriod(str, Enum):
 
 # Plan configurations
 PLAN_LIMITS = {
+    PlanType.FREE: {
+        "sessions_limit": 1,
+        "message_limit": 100,  # 100 messages per day (or total, depending on logic)
+        "rate_limit_per_minute": 10,
+        "price_monthly": 0,
+        "price_yearly": 0,
+        "features": [
+            "1 Connected WhatsApp Number",
+            "100 Messages per day",
+            "Rate limit: 10 msg/min",
+            "Community Support"
+        ]
+    },
     PlanType.BASIC: {
         "sessions_limit": 1,
         "message_limit": 0,  # No daily cap

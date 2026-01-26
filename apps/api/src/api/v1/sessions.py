@@ -41,6 +41,21 @@ async def create_session(
     Returns a stream_url for Server-Sent Events to receive QR codes.
     """
     try:
+        # Check session limit
+        sub_result = supabase.table("subscriptions")\
+            .select("sessions_limit")\
+            .eq("user_id", str(current_user['id']))\
+            .limit(1)\
+            .execute()
+        
+        if not sub_result.data:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail="No active subscription found. Please activate a plan in the dashboard before creating a session."
+            )
+
+        sessions_limit = sub_result.data[0].get("sessions_limit", 1)
+
         # Create session in database
         result = supabase.table('sessions').insert({
             'user_id': current_user['id'],

@@ -23,35 +23,44 @@ from ...models.message import (
 router = APIRouter(prefix="/messages", tags=["Messages"])
 
 
+from datetime import datetime
+from dateutil import parser as date_parser
+
 async def check_and_increment_quota(user_id: str, supabase: Client) -> None:
     """
     Check if user has remaining quota and increment usage.
     Raises HTTPException 403 if quota exceeded.
     """
     result = supabase.table("subscriptions")\
-        .select("messages_used, message_limit, quota_alert_sent_80, quota_alert_sent_100")\
+        .select("messages_used, message_limit, current_period_end, plan, status, quota_alert_sent_80, quota_alert_sent_100")\
         .eq("user_id", user_id)\
         .limit(1)\
         .execute()
     
     if not result.data:
-        # Create default subscription if none exists
-        supabase.table("subscriptions").insert({
-            "user_id": user_id,
-            "plan": "free",
-            "status": "active",
-            "message_limit": 100,
-            "messages_used": 1,
-            "rate_limit_per_minute": 10
-        }).execute()
-        return
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="No active subscription found. Please activate a plan in the dashboard."
+        )
     
     sub = result.data[0]
+    
+    # Check for expiration
+    if sub.get("current_period_end"):
+        expiry = date_parser.parse(sub["current_period_end"])
+        # Ensure expiry is compared with timezone if stored with one. 
+        # For simplicity assuming naive or consistent utc
+        if datetime.now(expiry.tzinfo) > expiry:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=f"Subscription expired on {expiry.strftime('%Y-%m-%d')}. Please upgrade your plan."
+            )
+
     messages_used = sub["messages_used"]
     message_limit = sub["message_limit"]
     
     # Check if quota exceeded
-    if messages_used >= message_limit:
+    if message_limit > 0 and messages_used >= message_limit:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Monthly message quota exceeded ({message_limit} messages). Please upgrade your plan."

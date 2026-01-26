@@ -1,106 +1,196 @@
 "use client";
 
-import Link from "next/link";
+import { useTranslations } from 'next-intl';
+import { useSubscription } from '@/hooks/useSubscription';
+import Link from 'next/link';
 
 export default function SubscriptionPage() {
+    const t = useTranslations('Subscription');
+    const tp = useTranslations('Pricing');
+    const { subscription, usage, loading, error, upgradePlan, downgradeToFree } = useSubscription();
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#25D366]"></div>
+            </div>
+        );
+    }
+
+    const availablePlans = [
+        { id: 'pro', name: 'Pro', price: '$11', highlighted: true },
+        { id: 'plus', name: 'Plus', price: '$23', highlighted: false },
+        { id: 'business', name: 'Business', price: '$40', highlighted: false },
+    ];
+
+    const daysRemaining = subscription?.currentPeriodEnd
+        ? Math.max(0, Math.ceil((new Date(subscription.currentPeriodEnd).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
+        : 0;
+
     return (
-        <div>
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-white">Subscription</h1>
-                <p className="text-gray-400">Manage your billing and subscription</p>
+        <div className="max-w-4xl mx-auto">
+            <div className="mb-8">
+                <h1 className="text-3xl font-bold text-white mb-2">{t('title')}</h1>
+                <p className="text-gray-400">{t('subtitle')}</p>
             </div>
 
-            {/* Current Plan */}
-            <div className="bg-[#111] border border-gray-800 rounded-xl p-6 mb-6">
-                <div className="flex items-center justify-between mb-4">
-                    <div>
-                        <span className="text-gray-400 text-sm">Current Plan</span>
-                        <h2 className="text-2xl font-bold text-white">Free Trial</h2>
-                    </div>
-                    <span className="bg-yellow-500/20 text-yellow-400 px-3 py-1 rounded-full text-sm font-medium">
-                        7 days remaining
-                    </span>
+            {error && !error.includes('404') && (
+                <div className="bg-red-500/10 border border-red-500 text-red-500 p-4 rounded-xl mb-6">
+                    {error}
                 </div>
-                <div className="grid grid-cols-3 gap-4 text-center py-4 border-t border-gray-800">
-                    <div>
-                        <p className="text-gray-400 text-sm">Sessions</p>
-                        <p className="text-white text-xl font-bold">1 / 1</p>
-                    </div>
-                    <div>
-                        <p className="text-gray-400 text-sm">Messages/min</p>
-                        <p className="text-white text-xl font-bold">1</p>
-                    </div>
-                    <div>
-                        <p className="text-gray-400 text-sm">Support</p>
-                        <p className="text-white text-xl font-bold">Community</p>
-                    </div>
-                </div>
-            </div>
+            )}
 
-            {/* Upgrade Plans */}
-            <h3 className="text-white font-semibold mb-4">Upgrade your plan</h3>
-            <div className="grid grid-cols-2 gap-6">
-                {/* Pro Plan */}
-                <div className="bg-[#111] border border-[#25D366] rounded-xl p-6 relative">
-                    <span className="absolute -top-3 left-6 bg-[#25D366] text-white px-3 py-1 rounded-full text-xs font-medium">
-                        Recommended
-                    </span>
-                    <h3 className="text-xl font-bold text-white mb-2">Pro</h3>
-                    <p className="text-gray-400 text-sm mb-4">For growing businesses</p>
-                    <div className="mb-6">
-                        <span className="text-4xl font-bold text-white">$29</span>
-                        <span className="text-gray-400">/month</span>
+            {/* Activation View for 404/No Plan */}
+            {(error?.includes('404') || (!subscription && !loading)) && (
+                <div className="bg-[#111] border border-gray-800 rounded-2xl p-12 text-center shadow-xl mb-10">
+                    <div className="w-16 h-16 bg-[#25D366]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <svg className="w-8 h-8 text-[#25D366]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
                     </div>
-                    <ul className="space-y-3 mb-6">
-                        {[
-                            "5 WhatsApp sessions",
-                            "100 messages per minute",
-                            "Webhooks support",
-                            "Priority email support",
-                            "API analytics",
-                        ].map((feature) => (
-                            <li key={feature} className="flex items-center space-x-2 text-gray-300">
-                                <svg className="w-5 h-5 text-[#25D366]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                                <span>{feature}</span>
-                            </li>
-                        ))}
-                    </ul>
-                    <button className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-white py-3 rounded-lg font-medium transition">
-                        Upgrade to Pro
+                    <h2 className="text-2xl font-bold text-white mb-3">Aucun abonnement actif</h2>
+                    <p className="text-gray-400 mb-8 max-w-sm mx-auto">
+                        Vous n'avez pas encore d'abonnement actif. Activez votre essai gratuit de 3 jours pour débloquer toutes les fonctionnalités.
+                    </p>
+                    <button
+                        onClick={async () => {
+                            const res = await downgradeToFree();
+                            if (res.success) {
+                                window.location.reload();
+                            }
+                        }}
+                        className="px-10 py-3.5 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold rounded-xl transition-all"
+                    >
+                        Commencer mon essai de 3 jours
                     </button>
+                    <p className="mt-4 text-gray-500 text-xs">Accès immédiat • Pas de carte requise</p>
                 </div>
+            )}
 
-                {/* Enterprise Plan */}
-                <div className="bg-[#111] border border-gray-800 rounded-xl p-6">
-                    <h3 className="text-xl font-bold text-white mb-2">Enterprise</h3>
-                    <p className="text-gray-400 text-sm mb-4">For large organizations</p>
-                    <div className="mb-6">
-                        <span className="text-4xl font-bold text-white">Custom</span>
+            {subscription && (
+                <>
+                    {/* Current Plan Card */}
+                    <div className="bg-[#111] border border-gray-800 rounded-2xl p-8 mb-10 shadow-xl">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                            <div>
+                                <span className="text-gray-500 text-sm font-medium uppercase tracking-wider">{t('currentPlan')}</span>
+                                <div className="flex items-center gap-3 mt-1">
+                                    <h2 className="text-3xl font-bold text-white capitalize">
+                                        {subscription?.plan || 'Free'}
+                                    </h2>
+                                    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${subscription?.status === 'active' && daysRemaining > 0 ? 'bg-[#25D366]/20 text-[#25D366]' : 'bg-red-500/20 text-red-500'
+                                        }`}>
+                                        {daysRemaining > 0 ? t(subscription?.status || 'active') : 'Expired'}
+                                    </span>
+                                </div>
+                            </div>
+                            {subscription?.currentPeriodEnd && (
+                                <div className="bg-gray-800/50 px-4 py-2 rounded-lg border border-gray-700">
+                                    <p className="text-gray-400 text-xs">
+                                        {subscription.plan === 'free' ? 'Trial ends in' : t('support')}
+                                    </p>
+                                    <p className={`font-medium text-sm ${subscription.plan === 'free' && daysRemaining <= 1 ? 'text-yellow-500' : 'text-white'}`}>
+                                        {subscription.plan === 'free'
+                                            ? t('remaining', { days: daysRemaining })
+                                            : new Date(subscription.currentPeriodEnd).toLocaleDateString()
+                                        }
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 py-6 border-t border-gray-800">
+                            <div className="space-y-1">
+                                <p className="text-gray-500 text-sm">{t('sessions')}</p>
+                                <p className="text-white text-2xl font-bold">{subscription?.sessionsLimit || 1}</p>
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-gray-500 text-sm">{t('usage')}</p>
+                                <div className="flex items-end gap-2">
+                                    <p className="text-white text-2xl font-bold">{usage?.messagesUsed || 0}</p>
+                                    <p className="text-gray-500 text-sm mb-1">/ {usage?.messageLimit === 0 ? '∞' : usage?.messageLimit}</p>
+                                </div>
+                                {usage && usage.messageLimit > 0 && (
+                                    <div className="w-full bg-gray-800 rounded-full h-1.5 mt-2">
+                                        <div
+                                            className={`h-1.5 rounded-full transition-all duration-500 ${usage.usagePercent > 90 ? 'bg-red-500' : 'bg-[#25D366]'}`}
+                                            style={{ width: `${Math.min(usage.usagePercent, 100)}%` }}
+                                        ></div>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="space-y-1 text-right sm:text-left">
+                                <p className="text-gray-500 text-sm">{t('support')}</p>
+                                <p className="text-white text-xl font-semibold">
+                                    {subscription?.plan === 'free' ? 'Community' : 'Priority Email'}
+                                </p>
+                            </div>
+                        </div>
                     </div>
-                    <ul className="space-y-3 mb-6">
-                        {[
-                            "Unlimited sessions",
-                            "Unlimited messages",
-                            "Custom SLA",
-                            "Dedicated support",
-                            "Custom integrations",
-                            "On-premise option",
-                        ].map((feature) => (
-                            <li key={feature} className="flex items-center space-x-2 text-gray-300">
-                                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                                <span>{feature}</span>
-                            </li>
-                        ))}
-                    </ul>
-                    <button className="w-full border border-gray-700 hover:border-gray-600 text-white py-3 rounded-lg font-medium transition">
-                        Contact Sales
-                    </button>
-                </div>
-            </div>
+
+                    {/* Upgrade Section */}
+                    <div className="space-y-6">
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                            <span className="w-1.5 h-6 bg-[#25D366] rounded-full"></span>
+                            {t('upgradeTitle')}
+                        </h3>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {availablePlans.map((plan) => (
+                                <div
+                                    key={plan.id}
+                                    className={`p-6 rounded-2xl flex flex-col justify-between transition-all border ${plan.highlighted
+                                            ? 'bg-[#25D366]/5 border-[#25D366] shadow-[0_0_20px_rgba(37,211,102,0.1)]'
+                                            : 'bg-[#111] border-gray-800 hover:border-gray-700'
+                                        }`}
+                                >
+                                    <div>
+                                        <h4 className="text-lg font-bold text-white mb-1 capitalize">{plan.name}</h4>
+                                        <div className="flex items-baseline gap-1 mb-4">
+                                            <span className="text-2xl font-bold text-white">{plan.price}</span>
+                                            <span className="text-gray-500 text-sm">/mo</span>
+                                        </div>
+                                    </div>
+
+                                    {subscription?.plan === plan.id ? (
+                                        <button disabled className="w-full py-2.5 rounded-xl font-bold text-sm bg-gray-800 text-gray-400 cursor-not-allowed">
+                                            {t('active')}
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => upgradePlan(plan.id)}
+                                            className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors ${plan.highlighted
+                                                    ? 'bg-[#25D366] hover:bg-[#20bd5a] text-white'
+                                                    : 'border border-[#25D366] text-[#25D366] hover:bg-[#25D366]/10'
+                                                }`}
+                                        >
+                                            {t('upgradeTo', { plan: plan.name })}
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+
+                        {subscription?.plan !== 'free' && (
+                            <div className="pt-4 flex justify-center">
+                                <button
+                                    onClick={downgradeToFree}
+                                    className="text-gray-500 hover:text-white text-sm transition-colors underline decoration-gray-700 underline-offset-4"
+                                >
+                                    {t('downgradeToFree')}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </>
+            )}
+
+            <p className="mt-12 text-center text-gray-600 text-xs flex items-center justify-center gap-2">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                </svg>
+                {t('paymentProcessor')}
+            </p>
         </div>
     );
 }

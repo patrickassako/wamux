@@ -10,6 +10,22 @@ export default function Pricing() {
 
     const plans = [
         {
+            name: t('freeName'),
+            id: "free",
+            priceMonthly: 0,
+            priceYearly: 0,
+            sessions: 1,
+            description: t('freeDesc'),
+            features: [
+                "1 Connected WhatsApp Number",
+                "100 Messages / day",
+                "10 Messages / min",
+                "Community Support",
+                "Basic Features",
+            ],
+            highlighted: false,
+        },
+        {
             name: t('basicName'),
             id: "basic",
             priceMonthly: 4,
