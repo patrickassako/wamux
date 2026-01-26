@@ -3,8 +3,15 @@ WhatsApp API Gateway - Main FastAPI Application
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import logging
+
+# Configure logging to suppress noisy libraries
+logging.basicConfig(level=logging.INFO)
+for logger_name in ["hpack", "httpcore", "httpx", "urllib3"]:
+    logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 from contextlib import asynccontextmanager
+
 import asyncio
 from redis.asyncio import Redis
 
