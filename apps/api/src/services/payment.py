@@ -62,11 +62,10 @@ class PaymentService:
                 )
                 
             except httpx.HTTPStatusError as e:
-                logger.error(f"CoolPay API Error: {e.response.text}")
-                # return an error response instead of crashing? 
-                # Or let it propagate to be handled by exception handlers?
-                # For now, let's propagate but with logging.
-                raise e
+                error_content = e.response.text
+                logger.error(f"CoolPay API Error: {error_content}")
+                # Raise a ValueError with the specific error message from CoolPay so it propagates to the API response
+                raise ValueError(f"CoolPay API Error: {error_content}") from e
             except httpx.RequestError as e:
                 logger.error(f"CoolPay Network Error: {str(e)}")
                 raise e

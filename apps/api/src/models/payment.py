@@ -17,11 +17,11 @@ class PaymentLinkRequest(BaseModel):
 
     transaction_amount: int = Field(..., gt=0, description="Amount to be paid")
     transaction_currency: Literal["XAF", "EUR"] = Field(default="XAF", description="Currency (XAF or EUR)")
-    transaction_reason: str = Field(..., min_length=1, max_length=100, description="Reason for payment")
+    transaction_reason: str | None = Field(default=None, min_length=1, max_length=100, description="Reason for payment")
     app_transaction_ref: str = Field(..., min_length=1, description="Unique reference from the application")
-    customer_name: str = Field(..., min_length=1, description="Payer name")
-    customer_phone_number: str = Field(..., description="Payer phone number")
-    customer_email: EmailStr = Field(..., description="Payer email")
+    customer_name: str | None = Field(default=None, min_length=1, description="Payer name")
+    customer_phone_number: str | None = Field(default=None, description="Payer phone number")
+    customer_email: EmailStr | None = Field(default=None, description="Payer email")
     customer_lang: Literal["en", "fr"] = Field(default="fr", description="Language (en or fr)")
 
 class PaymentLinkResponse(BaseModel):
