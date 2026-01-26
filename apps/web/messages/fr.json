@@ -171,6 +171,9 @@
         "trialing": "Essai",
         "paymentProcessor": "Paiement sécurisé via Stripe",
         "usage": "Utilisation",
-        "messagesUsed": "{used} / {limit} messages"
+        "messagesUsed": "{used} / {limit} messages",
+        "trialActive": "Période d'essai active",
+        "trialEndsIn": "Votre essai se termine dans {days} jours",
+        "upgradeNow": "Mettre à niveau"
     }
 }

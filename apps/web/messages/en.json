@@ -171,6 +171,9 @@
         "trialing": "Trialing",
         "paymentProcessor": "Secure payment via Stripe",
         "usage": "Usage",
-        "messagesUsed": "{used} / {limit} messages"
+        "messagesUsed": "{used} / {limit} messages",
+        "trialActive": "Trial Period Active",
+        "trialEndsIn": "Your trial ends in {days} days",
+        "upgradeNow": "Upgrade Now"
     }
 }

@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/dashboard/Sidebar";
 import Link from "next/link";
+import { useSubscription } from "@/hooks/useSubscription";
+import { useTranslations } from "next-intl";
 
 interface DashboardLayoutProps {
     children: React.ReactNode;
@@ -12,10 +14,11 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
     const [user, setUser] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-    const [trialDaysLeft, setTrialDaysLeft] = useState(7);
+    const [authLoading, setAuthLoading] = useState(true);
     const router = useRouter();
     const supabase = createClient();
+    const { subscription, loading: subLoading } = useSubscription();
+    const t = useTranslations('Subscription');
 
     useEffect(() => {
         const checkUser = async () => {
@@ -25,12 +28,18 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 return;
             }
             setUser(user);
-            setLoading(false);
+            setAuthLoading(false);
         };
         checkUser();
     }, [router, supabase.auth]);
 
-    if (loading) {
+    const daysRemaining = subscription?.currentPeriodEnd
+        ? Math.max(0, Math.ceil((new Date(subscription.currentPeriodEnd).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
+        : 0;
+
+    const showTrialBanner = subscription?.plan === 'free' && daysRemaining > 0;
+
+    if (authLoading) {
         return (
             <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
                 <div className="animate-spin w-8 h-8 border-2 border-[#25D366] border-t-transparent rounded-full"></div>
@@ -45,25 +54,27 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             {/* Main Content */}
             <div className="ml-64">
                 {/* Trial Banner */}
-                <div className="bg-[#1a1a1a] border-b border-gray-800 px-6 py-3 flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center">
-                            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
+                {showTrialBanner && (
+                    <div className="bg-[#1a1a1a] border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 bg-[#25D366]/10 rounded-full flex items-center justify-center">
+                                <svg className="w-5 h-5 text-[#25D366]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                            <div>
+                                <span className="text-white font-medium">{t('trialActive')}</span>
+                                <span className="text-gray-400 ml-2">{t('trialEndsIn', { days: daysRemaining })}</span>
+                            </div>
                         </div>
-                        <div>
-                            <span className="text-white font-medium">Trial Period Active</span>
-                            <span className="text-gray-400 ml-2">Your trial ends in {trialDaysLeft} days</span>
-                        </div>
+                        <Link
+                            href="/dashboard/subscription"
+                            className="bg-white text-black px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-gray-100 transition"
+                        >
+                            {t('upgradeNow')}
+                        </Link>
                     </div>
-                    <Link
-                        href="/dashboard/subscription"
-                        className="bg-white text-black px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-gray-100 transition"
-                    >
-                        Upgrade Now
-                    </Link>
-                </div>
+                )}
 
                 {/* Page Content */}
                 <main className="p-6">
