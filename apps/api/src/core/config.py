@@ -58,6 +58,10 @@ class Settings(BaseSettings):
         """Parse CORS origins from comma-separated string."""
         return [origin.strip() for origin in self.cors_origins_raw.split(",")]
     
+    # Payment (My-CoolPay)
+    coolpay_public_key: str | None = Field(default=None, alias="COOLPAY_PUBLIC_KEY")
+    coolpay_private_key: str | None = Field(default=None, alias="COOLPAY_PRIVATE_KEY")
+    
     # Rate Limiting
     rate_limit_per_minute: int = Field(default=60, alias="RATE_LIMIT_PER_MINUTE")
     rate_limit_burst: int = Field(default=10, alias="RATE_LIMIT_BURST")
