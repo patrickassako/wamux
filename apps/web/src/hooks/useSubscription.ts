@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase';
 
 interface Subscription {
     id: string;
@@ -37,7 +37,7 @@ export function useSubscription() {
     const [error, setError] = useState<string | null>(null);
 
     // Initialize Supabase client
-    const supabase = createClientComponentClient();
+    const supabase = createClient();
 
     const getAuthHeader = async () => {
         const { data: { session } } = await supabase.auth.getSession();
