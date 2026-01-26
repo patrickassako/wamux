@@ -112,6 +112,10 @@ class WebhookDispatcher:
             
             print(f"[DEBUG] Event type: {event_type}, Session: {session_id}")
             
+            if event_type == "SESSION_FAILED":
+                print(f"[CRITICAL] SESSION FAILED. Reason: {payload.get('reason')}, Error: {payload.get('error')}")
+                logger.error(f"Session {session_id} failed: {payload}")
+                
             if not session_id:
                 logger.debug(f"No session_id in event: {event_type}")
                 return
