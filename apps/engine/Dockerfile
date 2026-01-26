@@ -39,7 +39,8 @@ RUN npm install --omit=dev
 COPY --from=builder /build/dist ./dist
 
 # Create sessions directory
-RUN mkdir -p /app/sessions && chown -R node:node /app
+# Create sessions directory and ensure it is writable by any user (for volume mounts)
+RUN mkdir -p /app/sessions && chown -R node:node /app && chmod 777 /app/sessions
 
 # Switch to non-root user
 USER node
