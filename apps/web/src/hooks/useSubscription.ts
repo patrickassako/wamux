@@ -60,7 +60,11 @@ export function useSubscription() {
                 }
             });
 
-            if (!response.ok) throw new Error('Failed to fetch subscription');
+            if (response.status === 404) {
+                setSubscription(null);
+                return;
+            }
+            if (!response.ok) throw new Error('Failed to fetch subscription details');
             const data = await response.json();
             setSubscription(data);
         } catch (err: any) {
@@ -79,7 +83,11 @@ export function useSubscription() {
                 }
             });
 
-            if (!response.ok) throw new Error('Failed to fetch usage');
+            if (response.status === 404) {
+                setUsage(null);
+                return;
+            }
+            if (!response.ok) throw new Error('Failed to fetch usage statistics');
             const data = await response.json();
             setUsage(data);
         } catch (err: any) {

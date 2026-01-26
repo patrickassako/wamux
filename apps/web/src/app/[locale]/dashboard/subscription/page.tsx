@@ -130,54 +130,60 @@ export default function SubscriptionPage() {
                 </h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {plans.filter(p => p.name !== 'free').map((plan) => (
-                        <div
-                            key={plan.name}
-                            className={`p-6 rounded-2xl flex flex-col justify-between transition-all border ${plan.name === 'pro'
-                                ? 'bg-[#25D366]/5 border-[#25D366] shadow-[0_0_20px_rgba(37,211,102,0.1)]'
-                                : 'bg-[#111] border-gray-800 hover:border-gray-700'
-                                }`}
-                        >
-                            <div className="mb-6">
-                                <div className="flex items-center justify-between mb-2">
-                                    <h4 className="text-lg font-bold text-white capitalize">{plan.name}</h4>
-                                    {plan.name === 'pro' && (
-                                        <span className="bg-[#25D366] text-white text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Popular</span>
-                                    )}
+                    {plans.length > 0 ? (
+                        plans.filter(p => p.name.toLowerCase() !== 'free').map((plan) => (
+                            <div
+                                key={plan.name}
+                                className={`p-6 rounded-2xl flex flex-col justify-between transition-all border ${plan.name === 'pro'
+                                    ? 'bg-[#25D366]/5 border-[#25D366] shadow-[0_0_20px_rgba(37,211,102,0.1)]'
+                                    : 'bg-[#111] border-gray-800 hover:border-gray-700'
+                                    }`}
+                            >
+                                <div className="mb-6">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h4 className="text-lg font-bold text-white capitalize">{plan.name}</h4>
+                                        {plan.name === 'pro' && (
+                                            <span className="bg-[#25D366] text-white text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Popular</span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-baseline gap-1 mb-4">
+                                        <span className="text-3xl font-bold text-white">${plan.priceMonthly}</span>
+                                        <span className="text-gray-500 text-sm">{tp('perMonth')}</span>
+                                    </div>
+                                    <ul className="space-y-3">
+                                        {plan.features.map((feature, i) => (
+                                            <li key={i} className="flex items-start gap-2 text-sm text-gray-400">
+                                                <svg className="w-4 h-4 text-[#25D366] shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                                {feature}
+                                            </li>
+                                        ))}
+                                    </ul>
                                 </div>
-                                <div className="flex items-baseline gap-1 mb-4">
-                                    <span className="text-3xl font-bold text-white">${plan.priceMonthly}</span>
-                                    <span className="text-gray-500 text-sm">{tp('perMonth')}</span>
-                                </div>
-                                <ul className="space-y-3">
-                                    {plan.features.map((feature, i) => (
-                                        <li key={i} className="flex items-start gap-2 text-sm text-gray-400">
-                                            <svg className="w-4 h-4 text-[#25D366] shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                            </svg>
-                                            {feature}
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
 
-                            {subscription?.plan === plan.name ? (
-                                <button disabled className="w-full py-2.5 rounded-xl font-bold text-sm bg-gray-800 text-gray-400 cursor-not-allowed">
-                                    {t('active')}
-                                </button>
-                            ) : (
-                                <button
-                                    onClick={() => upgradePlan(plan.name)}
-                                    className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors ${plan.name === 'pro'
-                                        ? 'bg-[#25D366] hover:bg-[#20bd5a] text-white'
-                                        : 'border border-[#25D366] text-[#25D366] hover:bg-[#25D366]/10'
-                                        }`}
-                                >
-                                    {t('upgradeTo', { plan: plan.name })}
-                                </button>
-                            )}
+                                {subscription?.plan === plan.name ? (
+                                    <button disabled className="w-full py-2.5 rounded-xl font-bold text-sm bg-gray-800 text-gray-400 cursor-not-allowed">
+                                        {t('active')}
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => upgradePlan(plan.name)}
+                                        className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors ${plan.name === 'pro'
+                                            ? 'bg-[#25D366] hover:bg-[#20bd5a] text-white'
+                                            : 'border border-[#25D366] text-[#25D366] hover:bg-[#25D366]/10'
+                                            }`}
+                                    >
+                                        {t('upgradeTo', { plan: plan.name })}
+                                    </button>
+                                )}
+                            </div>
+                        ))
+                    ) : (
+                        <div className="col-span-full py-12 text-center bg-[#111] rounded-2xl border border-dashed border-gray-800">
+                            <p className="text-gray-500">Aucun plan premium disponible pour le moment.</p>
                         </div>
-                    ))}
+                    )}
                 </div>
 
                 {subscription && subscription.plan !== 'free' && (

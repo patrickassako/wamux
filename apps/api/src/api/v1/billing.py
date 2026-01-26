@@ -35,7 +35,7 @@ class SubscribeRequest(BaseModel):
     plan: PlanType
 
 
-@router.post("/subscribe", response_model=SubscriptionResponse)
+@router.post("/subscribe", response_model=SubscriptionResponse, response_model_by_alias=True)
 async def subscribe(
     request: SubscribeRequest,
     user=Depends(get_current_user)
@@ -90,7 +90,7 @@ async def subscribe(
         )
 
 
-@router.get("/plans", response_model=list[PlanInfo])
+@router.get("/plans", response_model=list[PlanInfo], response_model_by_alias=True)
 async def get_plans():
     """Get all available subscription plans"""
     try:
@@ -128,7 +128,7 @@ async def get_plans():
     return plans
 
 
-@router.get("/subscription", response_model=SubscriptionResponse)
+@router.get("/subscription", response_model=SubscriptionResponse, response_model_by_alias=True)
 async def get_subscription(user=Depends(get_current_user)):
     """Get current user's subscription"""
     supabase = get_supabase_client()
@@ -145,7 +145,7 @@ async def get_subscription(user=Depends(get_current_user)):
     return SubscriptionResponse(**result.data[0])
 
 
-@router.get("/usage", response_model=UsageResponse)
+@router.get("/usage", response_model=UsageResponse, response_model_by_alias=True)
 async def get_usage(user=Depends(get_current_user)):
     """Get current usage statistics"""
     supabase = get_supabase_client()
