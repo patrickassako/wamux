@@ -90,7 +90,7 @@ async def subscribe(
         )
 
 
-@router.get("/plans", response_model=list[PlanInfo], response_model_by_alias=True)
+@router.get("/plans")
 async def get_plans():
     """Get all available subscription plans"""
     try:
@@ -100,31 +100,35 @@ async def get_plans():
         if result.data:
             plans = []
             for plan_data in result.data:
-                plans.append(PlanInfo(
-                    name=plan_data["name"],
-                    sessions_limit=plan_data["sessions_limit"],
-                    message_limit=plan_data["message_limit"],
-                    rate_limit_per_minute=plan_data["rate_limit_per_minute"],
-                    price_monthly=plan_data["price_monthly"],
-                    price_yearly=plan_data["price_yearly"],
-                    features=plan_data["features"]
-                ))
+                # Manual construction to handle potential field mismatches gracefully
+                plans.append({
+                    "name": plan_data.get("name"),
+                    "sessionsLimit": plan_data.get("sessions_limit"),
+                    "messageLimit": plan_data.get("message_limit"),
+                    "rateLimitPerMinute": plan_data.get("rate_limit_per_minute"),
+                    "priceMonthly": plan_data.get("price_monthly"),
+                    "priceYearly": plan_data.get("price_yearly"),
+                    "features": plan_data.get("features", [])
+                })
             return plans
     except Exception as e:
         print(f"Error fetching plans from DB: {e}")
+        # Continue to fallback
 
-    # Fallback to hardcoded constants if DB fetch fails
+    # Fallback to hardcoded constants
     plans = []
     for plan_type, config in PLAN_LIMITS.items():
-        plans.append(PlanInfo(
-            name=plan_type,
-            sessions_limit=config["sessions_limit"],
-            message_limit=config["message_limit"],
-            rate_limit_per_minute=config["rate_limit_per_minute"],
-            price_monthly=config["price_monthly"],
-            price_yearly=config["price_yearly"],
-            features=config["features"]
-        ))
+        # Use value if Enum
+        name = plan_type.value if hasattr(plan_type, "value") else plan_type
+        plans.append({
+            "name": name,
+            "sessionsLimit": config["sessions_limit"],
+            "messageLimit": config["message_limit"],
+            "rateLimitPerMinute": config["rate_limit_per_minute"],
+            "priceMonthly": config["price_monthly"],
+            "priceYearly": config["price_yearly"],
+            "features": config["features"]
+        })
     return plans
 
 
