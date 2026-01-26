@@ -21,8 +21,9 @@ async function main(): Promise<void> {
         const redis = await getRedisClient();
 
         // Initialize Session Manager
-        logger.info('📱 Initializing Session Manager...');
-        const sessionManager = new SessionManager(redis, './auth_state');
+        const sessionPath = process.env.WHATSAPP_SESSION_PATH || './sessions';
+        logger.info({ sessionPath }, '📱 Initializing Session Manager...');
+        const sessionManager = new SessionManager(redis, sessionPath);
 
         // Recover active sessions from database
         logger.info('🔄 Recovering active sessions...');
