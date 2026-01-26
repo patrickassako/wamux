@@ -1,5 +1,5 @@
-
 import { useState, useEffect } from 'react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 interface Subscription {
     id: string;
@@ -36,6 +36,14 @@ export function useSubscription() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // Initialize Supabase client
+    const supabase = createClientComponentClient();
+
+    const getAuthHeader = async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        return session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {};
+    };
+
     const fetchPlans = async () => {
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -52,12 +60,10 @@ export function useSubscription() {
     const fetchSubscription = async () => {
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-            const token = localStorage.getItem('token'); // Assuming JWT is in localStorage
+            const headers = await getAuthHeader(); // Get fresh token
 
             const response = await fetch(`${apiUrl}/api/v1/billing/subscription`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
+                headers: headers
             });
 
             if (response.status === 404) {
@@ -75,12 +81,10 @@ export function useSubscription() {
     const fetchUsage = async () => {
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-            const token = localStorage.getItem('token');
+            const headers = await getAuthHeader(); // Get fresh token
 
             const response = await fetch(`${apiUrl}/api/v1/billing/usage`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
+                headers: headers
             });
 
             if (response.status === 404) {
@@ -98,13 +102,13 @@ export function useSubscription() {
     const upgradePlan = async (planId: string) => {
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-            const token = localStorage.getItem('token');
+            const headers = await getAuthHeader(); // Get fresh token
 
             const response = await fetch(`${apiUrl}/api/v1/billing/checkout`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    ...headers
                 },
                 body: JSON.stringify({
                     plan: planId,
@@ -130,13 +134,13 @@ export function useSubscription() {
     const downgradeToFree = async () => {
         try {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-            const token = localStorage.getItem('token');
+            const headers = await getAuthHeader(); // Get fresh token
 
             const response = await fetch(`${apiUrl}/api/v1/billing/subscribe`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    ...headers
                 },
                 body: JSON.stringify({ plan: 'free' })
             });
