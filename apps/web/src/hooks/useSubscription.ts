@@ -19,11 +19,34 @@ interface Usage {
     remaining: number;
 }
 
+interface Plan {
+    name: string;
+    sessions_limit: number;
+    message_limit: number;
+    rate_limit_per_minute: number;
+    price_monthly: number;
+    price_yearly: number;
+    features: string[];
+}
+
 export function useSubscription() {
     const [subscription, setSubscription] = useState<Subscription | null>(null);
     const [usage, setUsage] = useState<Usage | null>(null);
+    const [plans, setPlans] = useState<Plan[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    const fetchPlans = async () => {
+        try {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+            const response = await fetch(`${apiUrl}/api/v1/billing/plans`);
+            if (!response.ok) throw new Error('Failed to fetch plans');
+            const data = await response.json();
+            setPlans(data);
+        } catch (err: any) {
+            console.error('Error fetching plans:', err);
+        }
+    };
 
     const fetchSubscription = async () => {
         try {
@@ -123,7 +146,7 @@ export function useSubscription() {
     useEffect(() => {
         const init = async () => {
             setLoading(true);
-            await Promise.all([fetchSubscription(), fetchUsage()]);
+            await Promise.all([fetchSubscription(), fetchUsage(), fetchPlans()]);
             setLoading(false);
         };
         init();
@@ -132,10 +155,11 @@ export function useSubscription() {
     return {
         subscription,
         usage,
+        plans,
         loading,
         error,
         upgradePlan,
         downgradeToFree,
-        refresh: () => Promise.all([fetchSubscription(), fetchUsage()])
+        refresh: () => Promise.all([fetchSubscription(), fetchUsage(), fetchPlans()])
     };
 }
