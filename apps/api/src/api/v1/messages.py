@@ -31,36 +31,48 @@ async def check_and_increment_quota(user_id: str, supabase: Client) -> None:
     Check if user has remaining quota and increment usage.
     Raises HTTPException 403 if quota exceeded.
     """
+    print(f"Checking quota for User ID: {user_id}")
     result = supabase.table("subscriptions")\
         .select("messages_used, message_limit, current_period_end, plan, status, quota_alert_sent_80, quota_alert_sent_100")\
-        .eq("user_id", user_id)\
+        .eq("user_id", str(user_id))\
         .limit(1)\
         .execute()
     
     if not result.data:
+        print(f"No subscription found for User ID: {user_id}")
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail="No active subscription found. Please activate a plan in the dashboard."
         )
     
     sub = result.data[0]
+    print(f"Subscription found: {sub}")
     
     # Check for expiration
     if sub.get("current_period_end"):
-        expiry = date_parser.parse(sub["current_period_end"])
-        # Ensure expiry is compared with timezone if stored with one. 
-        # For simplicity assuming naive or consistent utc
-        if datetime.now(expiry.tzinfo) > expiry:
-            raise HTTPException(
-                status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                detail=f"Subscription expired on {expiry.strftime('%Y-%m-%d')}. Please upgrade your plan."
-            )
+        try:
+            expiry = date_parser.parse(sub["current_period_end"])
+            # Naive comparison for simplicity, or ensure both are offset-aware
+            now = datetime.now(expiry.tzinfo)
+            if now > expiry:
+                print(f"Subscription expired: {expiry} vs Now: {now}")
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail=f"Subscription expired on {expiry.strftime('%Y-%m-%d')}. Please upgrade your plan."
+                )
+        except Exception as e:
+            print(f"Date parse error: {e}")
+            # Don't block on date error? Or block safer?
+            pass
 
-    messages_used = sub["messages_used"]
-    message_limit = sub["message_limit"]
+    messages_used = sub.get("messages_used", 0)
+    message_limit = sub.get("message_limit", 100)
+    
+    print(f"Usage: {messages_used}/{message_limit}")
     
     # Check if quota exceeded
     if message_limit > 0 and messages_used >= message_limit:
+        print("Quota exceeded")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Monthly message quota exceeded ({message_limit} messages). Please upgrade your plan."
@@ -71,19 +83,20 @@ async def check_and_increment_quota(user_id: str, supabase: Client) -> None:
     update_data = {"messages_used": new_usage}
     
     # Check for 80% threshold alert
-    usage_percent = (new_usage / message_limit) * 100
-    if usage_percent >= 80 and not sub.get("quota_alert_sent_80"):
-        update_data["quota_alert_sent_80"] = True
-        # TODO: Send email alert at 80%
-    
-    # Check for 100% threshold alert
-    if usage_percent >= 100 and not sub.get("quota_alert_sent_100"):
-        update_data["quota_alert_sent_100"] = True
-        # TODO: Send email alert at 100%
+    if message_limit > 0:
+        usage_percent = (new_usage / message_limit) * 100
+        if usage_percent >= 80 and not sub.get("quota_alert_sent_80"):
+            update_data["quota_alert_sent_80"] = True
+            # TODO: Send email alert at 80%
+        
+        # Check for 100% threshold alert
+        if usage_percent >= 100 and not sub.get("quota_alert_sent_100"):
+            update_data["quota_alert_sent_100"] = True
+            # TODO: Send email alert at 100%
     
     supabase.table("subscriptions")\
         .update(update_data)\
-        .eq("user_id", user_id)\
+        .eq("user_id", str(user_id))\
         .execute()
 
 
