@@ -41,7 +41,11 @@ export function useSubscription() {
 
     const getAuthHeader = async () => {
         const { data: { session } } = await supabase.auth.getSession();
-        return session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {};
+        const headers: Record<string, string> = {};
+        if (session?.access_token) {
+            headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+        return headers;
     };
 
     const fetchPlans = async () => {
