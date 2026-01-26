@@ -1,0 +1,128 @@
+version: '3.9'
+
+services:
+  # ============================================
+  # Redis - Message Broker with Streams
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: whatsapp-redis
+    command: redis-server --appendonly yes --appendfsync everysec
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - whatsapp_network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  # ============================================
+  # API Service - Python FastAPI
+  # ============================================
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: whatsapp-api
+    ports:
+      - "8000:8000"
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DEBUG=true
+    env_file:
+      - .env
+    volumes:
+      - ./apps/api/src:/app/src:ro
+    networks:
+      - whatsapp_network
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ============================================
+  # Engine Service - Node.js Baileys Worker
+  # ============================================
+  engine:
+    build:
+      context: ./apps/engine
+      dockerfile: Dockerfile
+    container_name: whatsapp-engine
+    environment:
+      - ENGINE_REDIS_HOST=redis
+      - ENGINE_REDIS_PORT=6379
+      - ENGINE_LOG_LEVEL=info
+      - WHATSAPP_SESSION_PATH=/app/sessions
+    env_file:
+      - .env
+    volumes:
+      - ./apps/engine/src:/app/src:ro
+      - whatsapp_sessions:/app/sessions
+    networks:
+      - whatsapp_network
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "node", "-e", "require('ioredis').createClient({host:'redis'}).ping()" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # ============================================
+  # Web Frontend Service - Next.js
+  # ============================================
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: whatsapp-web
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    networks:
+      - whatsapp_network
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:3000" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  whatsapp_network:
+    driver: bridge
+    name: whatsapp_network
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  redis_data:
+    name: whatsapp_redis_data
+  whatsapp_sessions:
+    name: whatsapp_sessions
