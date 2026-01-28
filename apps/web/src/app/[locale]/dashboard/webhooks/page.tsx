@@ -311,8 +311,10 @@ export default function WebhooksPage() {
         if (!sessionId) return { label: "Toutes les sessions", color: "text-blue-400" };
         const session = sessions.find(s => s.id === sessionId);
         if (!session) return { label: "Session inconnue", color: "text-gray-400" };
+        const phoneOrName = session.phone_number || session.name;
+        const shortId = sessionId.slice(0, 8);
         return {
-            label: session.phone_number || session.name || sessionId.slice(0, 8),
+            label: phoneOrName ? `${phoneOrName} (${shortId})` : shortId,
             color: session.status === "connected" ? "text-green-400" : "text-gray-400"
         };
     };
@@ -403,7 +405,7 @@ export default function WebhooksPage() {
                                         <option value="">🌐 Toutes les sessions (Global)</option>
                                         {sessions.map((s) => (
                                             <option key={s.id} value={s.id}>
-                                                {s.status === "connected" ? "🟢" : "⚪"} {s.phone_number || s.name || s.id.slice(0, 8)}
+                                                {s.status === "connected" ? "🟢" : "⚪"} {s.phone_number ? `${s.phone_number} (${s.id.slice(0, 8)})` : s.name || s.id.slice(0, 8)}
                                             </option>
                                         ))}
                                     </select>
@@ -712,7 +714,7 @@ export default function WebhooksPage() {
                                 <option value="">🌐 Toutes les sessions (Global)</option>
                                 {sessions.map((s) => (
                                     <option key={s.id} value={s.id}>
-                                        {s.status === "connected" ? "🟢" : "⚪"} {s.phone_number || s.name || s.id.slice(0, 8)}
+                                        {s.status === "connected" ? "🟢" : "⚪"} {s.phone_number ? `${s.phone_number} (${s.id.slice(0, 8)})` : s.name || s.id.slice(0, 8)}
                                     </option>
                                 ))}
                             </select>
