@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase";
 interface Session {
     id: string;
     name: string;
-    phone_number: string | null;
+    phoneNumber: string | null;
     status: string;
 }
 
@@ -311,7 +311,7 @@ export default function WebhooksPage() {
         if (!sessionId) return { label: "Toutes les sessions", color: "text-blue-400" };
         const session = sessions.find(s => s.id === sessionId);
         if (!session) return { label: "Session inconnue", color: "text-gray-400" };
-        const phoneOrName = session.phone_number || session.name;
+        const phoneOrName = session.phoneNumber || session.name;
         const shortId = sessionId.slice(0, 8);
         return {
             label: phoneOrName ? `${phoneOrName} (${shortId})` : shortId,
@@ -405,7 +405,7 @@ export default function WebhooksPage() {
                                         <option value="">🌐 Toutes les sessions (Global)</option>
                                         {sessions.map((s) => (
                                             <option key={s.id} value={s.id}>
-                                                {s.status === "connected" ? "🟢" : "⚪"} {s.phone_number ? `${s.phone_number} (${s.id.slice(0, 8)})` : s.name || s.id.slice(0, 8)}
+                                                {s.status === "connected" ? "🟢" : "⚪"} {s.phoneNumber ? `${s.phoneNumber} (${s.id.slice(0, 8)})` : s.name || s.id.slice(0, 8)}
                                             </option>
                                         ))}
                                     </select>
@@ -714,7 +714,7 @@ export default function WebhooksPage() {
                                 <option value="">🌐 Toutes les sessions (Global)</option>
                                 {sessions.map((s) => (
                                     <option key={s.id} value={s.id}>
-                                        {s.status === "connected" ? "🟢" : "⚪"} {s.phone_number ? `${s.phone_number} (${s.id.slice(0, 8)})` : s.name || s.id.slice(0, 8)}
+                                        {s.status === "connected" ? "🟢" : "⚪"} {s.phoneNumber ? `${s.phoneNumber} (${s.id.slice(0, 8)})` : s.name || s.id.slice(0, 8)}
                                     </option>
                                 ))}
                             </select>
