@@ -25,6 +25,7 @@ from src.api.v1.events import router as events_router
 from src.api.v1.billing import router as billing_router
 from src.api.v1.admin import router as admin_router
 from src.api.v1.payment import router as payment_router
+from src.api.v1.support import router as support_router
 from src.services.webhook_dispatcher import WebhookDispatcher
 # Global dispatcher instance
 webhook_dispatcher = None
@@ -101,6 +102,7 @@ app.include_router(events_router, prefix="/api/v1")
 app.include_router(billing_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(payment_router, prefix="/api/v1")
+app.include_router(support_router, prefix="/api/v1/support", tags=["support"])
 
 
 @app.get("/health")

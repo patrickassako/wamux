@@ -15,8 +15,8 @@ const navItems = [
 
 const bottomItems = [
     { href: "/docs", label: "Documentation", icon: "book" },
-    { href: "#", label: "Need Help?", icon: "help-circle" },
-    { href: "#", label: "Contact Us", icon: "message-circle" },
+    { href: "/dashboard/support", label: "Need Help?", icon: "help-circle" },
+    { href: "/dashboard/support", label: "Contact Us", icon: "message-circle" },
 ];
 
 export default function Sidebar() {
