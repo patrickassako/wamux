@@ -41,9 +41,19 @@ export default function SupportPage() {
                 setFormData({ subject: "", category: "general", message: "" });
             } else {
                 const data = await response.json();
-                setError(data.detail || "Failed to submit ticket");
+                console.error('Support ticket error:', data);
+                // Handle Pydantic validation errors
+                if (data.detail && Array.isArray(data.detail)) {
+                    const errors = data.detail.map((err: any) =>
+                        `${err.loc.join('.')}: ${err.msg}`
+                    ).join(', ');
+                    setError(errors);
+                } else {
+                    setError(data.detail || "Failed to submit ticket");
+                }
             }
         } catch (err) {
+            console.error('Support submission error:', err);
             setError("An error occurred. Please try again.");
         } finally {
             setSubmitting(false);
