@@ -75,6 +75,11 @@ export default function WebhooksPage() {
     const [saving, setSaving] = useState(false);
     const [testing, setTesting] = useState<string | null>(null);
     const [testResult, setTestResult] = useState<{ success: boolean; statusCode?: number; error?: string; latencyMs?: number } | null>(null);
+    // Edit modal state
+    const [editingWebhook, setEditingWebhook] = useState<Webhook | null>(null);
+    const [editUrl, setEditUrl] = useState("");
+    const [editSessionId, setEditSessionId] = useState<string>("");
+    const [editEvents, setEditEvents] = useState<string[]>([]);
     const supabase = createClient();
 
     useEffect(() => {
@@ -223,6 +228,75 @@ export default function WebhooksPage() {
         } catch (error) {
             console.error("Failed to toggle webhook:", error);
         }
+    };
+
+    const openEditModal = (webhook: Webhook) => {
+        setEditingWebhook(webhook);
+        setEditUrl(webhook.url);
+        setEditSessionId(webhook.sessionId || "");
+        setEditEvents(webhook.events);
+    };
+
+    const closeEditModal = () => {
+        setEditingWebhook(null);
+        setEditUrl("");
+        setEditSessionId("");
+        setEditEvents([]);
+    };
+
+    const updateWebhook = async () => {
+        if (!editingWebhook || !editUrl.trim() || editEvents.length === 0) return;
+
+        setSaving(true);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
+            const payload: { url: string; events: string[]; sessionId?: string | null } = {
+                url: editUrl,
+                events: editEvents,
+            };
+            // Handle session change - explicitly send null for global
+            if (editSessionId) {
+                payload.sessionId = editSessionId;
+            } else if (editingWebhook.sessionId) {
+                // Changed from specific session to global
+                payload.sessionId = null;
+            }
+
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/webhooks/${editingWebhook.id}`, {
+                method: "PATCH",
+                headers: {
+                    "Authorization": `Bearer ${session.access_token}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(payload),
+            });
+
+            if (response.ok) {
+                const updatedData = await response.json();
+                setWebhooks(prev => prev.map(w =>
+                    w.id === editingWebhook.id ? { ...w, url: editUrl, sessionId: editSessionId || null, events: editEvents } : w
+                ));
+                closeEditModal();
+            } else {
+                const error = await response.json();
+                alert(`Erreur: ${error.detail || "Impossible de modifier le webhook"}`);
+            }
+        } catch (error) {
+            console.error("Failed to update webhook:", error);
+            alert("Erreur lors de la modification du webhook");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const toggleEditEvent = (eventType: string) => {
+        setEditEvents(prev =>
+            prev.includes(eventType)
+                ? prev.filter(e => e !== eventType)
+                : [...prev, eventType]
+        );
     };
 
     const closeModal = () => {
@@ -522,7 +596,11 @@ export default function WebhooksPage() {
             ) : (
                 <div className="space-y-4">
                     {webhooks.map((webhook) => (
-                        <div key={webhook.id} className="bg-[#111] border border-gray-800 rounded-xl p-5">
+                        <div
+                            key={webhook.id}
+                            className="bg-[#111] border border-gray-800 rounded-xl p-5 hover:border-gray-700 transition cursor-pointer"
+                            onClick={() => openEditModal(webhook)}
+                        >
                             <div className="flex items-start justify-between">
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center space-x-3 mb-2">
@@ -556,7 +634,7 @@ export default function WebhooksPage() {
                                         )}
                                     </div>
                                 </div>
-                                <div className="flex items-center space-x-2 ml-4">
+                                <div className="flex items-center space-x-2 ml-4" onClick={(e) => e.stopPropagation()}>
                                     <button
                                         onClick={() => testWebhook(webhook.id)}
                                         disabled={testing === webhook.id}
@@ -603,6 +681,139 @@ export default function WebhooksPage() {
                             </div>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* Edit Modal */}
+            {editingWebhook && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+                    <div className="bg-[#111] border border-gray-800 rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                        <h3 className="text-white font-semibold text-lg mb-4">Modifier le Webhook</h3>
+
+                        {/* URL */}
+                        <div className="mb-4">
+                            <label className="block text-gray-400 text-sm mb-2">URL du Webhook</label>
+                            <input
+                                type="url"
+                                value={editUrl}
+                                onChange={(e) => setEditUrl(e.target.value)}
+                                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-[#25D366]"
+                            />
+                        </div>
+
+                        {/* Session Selection */}
+                        <div className="mb-6">
+                            <label className="block text-gray-400 text-sm mb-2">Session associée</label>
+                            <select
+                                value={editSessionId}
+                                onChange={(e) => setEditSessionId(e.target.value)}
+                                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-[#25D366]"
+                            >
+                                <option value="">🌐 Toutes les sessions (Global)</option>
+                                {sessions.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                        {s.status === "connected" ? "🟢" : "⚪"} {s.phone_number || s.name || s.id.slice(0, 8)}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Event Selection */}
+                        <div className="mb-6">
+                            <label className="block text-gray-400 text-sm mb-3">
+                                Événements ({editEvents.length} sélectionnés)
+                            </label>
+                            <div className="space-y-4">
+                                {EVENT_CATALOG.map((category) => {
+                                    const categoryEventTypes = category.events.map(e => e.type);
+                                    const allSelected = categoryEventTypes.every(e => editEvents.includes(e));
+                                    const someSelected = categoryEventTypes.some(e => editEvents.includes(e));
+
+                                    return (
+                                        <div key={category.name} className="bg-gray-800/50 rounded-lg p-4">
+                                            <div
+                                                className="flex items-center justify-between mb-3 cursor-pointer"
+                                                onClick={() => {
+                                                    if (allSelected) {
+                                                        setEditEvents(prev => prev.filter(e => !categoryEventTypes.includes(e)));
+                                                    } else {
+                                                        setEditEvents(prev => [...new Set([...prev, ...categoryEventTypes])]);
+                                                    }
+                                                }}
+                                            >
+                                                <div className="flex items-center space-x-2">
+                                                    <span>{category.icon}</span>
+                                                    <span className="text-white font-medium">{category.name}</span>
+                                                </div>
+                                                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${allSelected
+                                                    ? 'bg-[#25D366] border-[#25D366]'
+                                                    : someSelected
+                                                        ? 'border-[#25D366]'
+                                                        : 'border-gray-600'
+                                                    }`}>
+                                                    {allSelected && <span className="text-white text-xs">✓</span>}
+                                                    {someSelected && !allSelected && <span className="text-[#25D366] text-xs">−</span>}
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-1 gap-2">
+                                                {category.events.map((event) => (
+                                                    <label key={event.type} className="flex items-center space-x-3 cursor-pointer py-1">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={editEvents.includes(event.type)}
+                                                            onChange={() => toggleEditEvent(event.type)}
+                                                            className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-[#25D366] focus:ring-[#25D366]"
+                                                        />
+                                                        <div className="flex-1">
+                                                            <code className="text-green-400 text-sm">{event.type}</code>
+                                                            <span className="text-gray-500 text-sm ml-2">- {event.description}</span>
+                                                        </div>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Webhook Info */}
+                        <div className="mb-6 p-4 bg-gray-800/30 rounded-lg">
+                            <div className="flex justify-between text-sm mb-2">
+                                <span className="text-gray-400">Créé le</span>
+                                <span className="text-gray-300">{new Date(editingWebhook.createdAt).toLocaleDateString('fr-FR')}</span>
+                            </div>
+                            {editingWebhook.lastTriggeredAt && (
+                                <div className="flex justify-between text-sm mb-2">
+                                    <span className="text-gray-400">Dernier déclenchement</span>
+                                    <span className="text-gray-300">{new Date(editingWebhook.lastTriggeredAt).toLocaleString('fr-FR')}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between text-sm">
+                                <span className="text-gray-400">Échecs</span>
+                                <span className={editingWebhook.failureCount > 0 ? "text-red-400" : "text-green-400"}>
+                                    {editingWebhook.failureCount}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex space-x-3">
+                            <button
+                                onClick={closeEditModal}
+                                className="flex-1 px-4 py-2.5 border border-gray-700 text-gray-300 rounded-lg hover:bg-gray-800 transition"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                onClick={updateWebhook}
+                                disabled={saving || !editUrl.trim() || editEvents.length === 0}
+                                className="flex-1 px-4 py-2.5 bg-[#25D366] text-white rounded-lg hover:bg-[#20bd5a] disabled:opacity-50 transition"
+                            >
+                                {saving ? "Enregistrement..." : "Enregistrer"}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 
