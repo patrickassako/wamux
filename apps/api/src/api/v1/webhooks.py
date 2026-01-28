@@ -150,6 +150,27 @@ async def update_webhook(
     if request.enabled is not None:
         update_data['enabled'] = request.enabled
     
+    # Handle session_id update - check if field was explicitly provided
+    if hasattr(request, 'session_id') and 'sessionId' in (request.model_fields_set or set()):
+        if request.session_id is not None:
+            # Validate session belongs to user
+            session_result = supabase.table('sessions')\
+                .select('id')\
+                .eq('id', str(request.session_id))\
+                .eq('user_id', current_user['id'])\
+                .single()\
+                .execute()
+            
+            if not session_result.data:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Session not found"
+                )
+            update_data['session_id'] = str(request.session_id)
+        else:
+            # Allow setting to null (global)
+            update_data['session_id'] = None
+    
     if not update_data:
         return WebhookResponse(**existing.data)
     

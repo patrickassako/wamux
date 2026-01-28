@@ -3,6 +3,13 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 
+interface Session {
+    id: string;
+    name: string;
+    phone_number: string | null;
+    status: string;
+}
+
 interface Webhook {
     id: string;
     url: string;
@@ -58,9 +65,11 @@ const DEFAULT_EVENTS = ["message.received", "message.sent", "session.connected",
 
 export default function WebhooksPage() {
     const [webhooks, setWebhooks] = useState<Webhook[]>([]);
+    const [sessions, setSessions] = useState<Session[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [newUrl, setNewUrl] = useState("");
+    const [selectedSessionId, setSelectedSessionId] = useState<string>(""); // "" = global
     const [selectedEvents, setSelectedEvents] = useState<string[]>(DEFAULT_EVENTS);
     const [createdSecret, setCreatedSecret] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
@@ -70,7 +79,26 @@ export default function WebhooksPage() {
 
     useEffect(() => {
         loadWebhooks();
+        loadSessions();
     }, []);
+
+    const loadSessions = async () => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/sessions`, {
+                headers: { "Authorization": `Bearer ${session.access_token}` },
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setSessions(data.sessions || []);
+            }
+        } catch (error) {
+            console.error("Failed to load sessions:", error);
+        }
+    };
 
     const loadWebhooks = async () => {
         try {
@@ -119,16 +147,22 @@ export default function WebhooksPage() {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) return;
 
+            const payload: { url: string; events: string[]; sessionId?: string } = {
+                url: newUrl,
+                events: selectedEvents,
+            };
+            // Only add sessionId if a specific session is selected
+            if (selectedSessionId) {
+                payload.sessionId = selectedSessionId;
+            }
+
             const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/webhooks`, {
                 method: "POST",
                 headers: {
                     "Authorization": `Bearer ${session.access_token}`,
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({
-                    url: newUrl,
-                    events: selectedEvents,
-                }),
+                body: JSON.stringify(payload),
             });
 
             if (response.ok) {
@@ -194,8 +228,19 @@ export default function WebhooksPage() {
     const closeModal = () => {
         setShowCreateModal(false);
         setNewUrl("");
+        setSelectedSessionId("");
         setSelectedEvents(DEFAULT_EVENTS);
         setCreatedSecret(null);
+    };
+
+    const getSessionDisplay = (sessionId: string | null) => {
+        if (!sessionId) return { label: "Toutes les sessions", color: "text-blue-400" };
+        const session = sessions.find(s => s.id === sessionId);
+        if (!session) return { label: "Session inconnue", color: "text-gray-400" };
+        return {
+            label: session.phone_number || session.name || sessionId.slice(0, 8),
+            color: session.status === "connected" ? "text-green-400" : "text-gray-400"
+        };
     };
 
     const testWebhook = async (id: string) => {
@@ -262,7 +307,7 @@ export default function WebhooksPage() {
                                 <h3 className="text-white font-semibold text-lg mb-4">Créer un Webhook</h3>
 
                                 {/* URL */}
-                                <div className="mb-6">
+                                <div className="mb-4">
                                     <label className="block text-gray-400 text-sm mb-2">URL du Webhook</label>
                                     <input
                                         type="url"
@@ -271,6 +316,28 @@ export default function WebhooksPage() {
                                         placeholder="https://votre-serveur.com/webhook"
                                         className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-[#25D366]"
                                     />
+                                </div>
+
+                                {/* Session Selection */}
+                                <div className="mb-6">
+                                    <label className="block text-gray-400 text-sm mb-2">Session associée</label>
+                                    <select
+                                        value={selectedSessionId}
+                                        onChange={(e) => setSelectedSessionId(e.target.value)}
+                                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-[#25D366]"
+                                    >
+                                        <option value="">🌐 Toutes les sessions (Global)</option>
+                                        {sessions.map((s) => (
+                                            <option key={s.id} value={s.id}>
+                                                {s.status === "connected" ? "🟢" : "⚪"} {s.phone_number || s.name || s.id.slice(0, 8)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-gray-500 text-xs mt-1">
+                                        {selectedSessionId
+                                            ? "Ce webhook recevra uniquement les événements de cette session"
+                                            : "Ce webhook recevra les événements de toutes vos sessions"}
+                                    </p>
                                 </div>
 
                                 {/* Event Selection */}
@@ -465,6 +532,10 @@ export default function WebhooksPage() {
                                             : "bg-gray-500/20 text-gray-400 border border-gray-500/30"
                                             }`}>
                                             {webhook.enabled ? "Actif" : "Désactivé"}
+                                        </span>
+                                        {/* Session Badge */}
+                                        <span className={`px-2 py-0.5 rounded text-xs font-medium bg-blue-500/10 border border-blue-500/30 ${getSessionDisplay(webhook.sessionId).color}`}>
+                                            {webhook.sessionId ? "📱" : "🌐"} {getSessionDisplay(webhook.sessionId).label}
                                         </span>
                                         {webhook.failureCount > 0 && (
                                             <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">

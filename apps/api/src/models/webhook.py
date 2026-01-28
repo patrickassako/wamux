@@ -79,6 +79,7 @@ class WebhookUpdate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     
     url: str | None = Field(None, description="New URL")
+    session_id: UUID | None = Field(None, alias="sessionId", description="Session to associate (null for global)")
     events: list[WebhookEventType] | None = Field(None, description="New events list")
     enabled: bool | None = Field(None, description="Enable/disable webhook")
 
