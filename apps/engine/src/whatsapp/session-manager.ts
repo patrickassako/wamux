@@ -56,13 +56,31 @@ export class SessionManager {
             // Get latest Baileys version
             const { version } = await fetchLatestBaileysVersion();
 
-            // Create WhatsApp socket
+            // Create WhatsApp socket with optimized settings for datacenter stability
             const sock = makeWASocket({
                 version,
                 auth: state,
                 printQRInTerminal: false, // CRITICAL: Don't print to terminal
                 logger: logger.child({ sessionId }) as any,
-                browser: ['WhatsApp API Gateway', 'Chrome', '1.0.0']
+                browser: ['WhatsApp API Gateway', 'Chrome', '1.0.0'],
+
+                // === STABILITY FIXES FOR 503 ERRORS ===
+                // Don't mark as online immediately - reduces server load
+                markOnlineOnConnect: false,
+                // Don't sync full history - reduces bandwidth and server requests
+                syncFullHistory: false,
+                // Send keepalive ping every 25 seconds to maintain WebSocket connection
+                keepAliveIntervalMs: 25000,
+                // Delay between retry requests to avoid rate limiting
+                retryRequestDelayMs: 2000,
+                // Increase connection timeout for slower networks
+                connectTimeoutMs: 60000,
+                // Default timeout for queries
+                defaultQueryTimeoutMs: 60000,
+                // Emit only essential events to reduce processing
+                emitOwnEvents: true,
+                // Avoid generating link preview (reduces external requests)
+                generateHighQualityLinkPreview: false,
             });
 
             // Store socket reference
@@ -303,7 +321,10 @@ export class SessionManager {
     private async attemptReconnect(sessionId: string): Promise<void> {
         const attempts = this.reconnectAttempts.get(sessionId) || 0;
 
-        if (attempts >= 5) {
+        // Increased max attempts for 503 errors on datacenter IPs
+        const MAX_RECONNECT_ATTEMPTS = 10;
+
+        if (attempts >= MAX_RECONNECT_ATTEMPTS) {
             logger.error({ sessionId, attempts }, 'Max reconnection attempts reached');
 
             await this.updateSessionStatus(sessionId, 'failed');
@@ -317,8 +338,12 @@ export class SessionManager {
             return;
         }
 
-        // Exponential backoff: 1s, 2s, 4s, 8s, 16s
-        const delay = Math.pow(2, attempts) * 1000;
+        // Exponential backoff with jitter: base 2s, max ~17 minutes
+        // Adding jitter helps avoid thundering herd when WhatsApp servers recover
+        const baseDelay = 2000; // 2 seconds base (increased from 1s)
+        const exponentialDelay = Math.pow(2, attempts) * baseDelay;
+        const jitter = Math.random() * 1000; // 0-1 second random jitter
+        const delay = Math.min(exponentialDelay + jitter, 300000); // Cap at 5 minutes
 
         logger.info({
             sessionId,
