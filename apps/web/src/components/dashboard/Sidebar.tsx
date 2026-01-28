@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -23,6 +24,17 @@ export default function Sidebar() {
     const pathname = usePathname();
     const router = useRouter();
     const supabase = createClient();
+    const [user, setUser] = useState<any>(null);
+
+    useEffect(() => {
+        const loadUser = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                setUser(user);
+            }
+        };
+        loadUser();
+    }, [supabase.auth]);
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
@@ -33,6 +45,15 @@ export default function Sidebar() {
         if (href === "/dashboard") return pathname === href;
         return pathname.startsWith(href);
     };
+
+    // Get user display name and initials
+    const displayName = user?.user_metadata?.full_name || user?.email || "User";
+    const initials = displayName
+        .split(" ")
+        .slice(0, 2)
+        .map((n: string) => n[0])
+        .join("")
+        .toUpperCase();
 
     return (
         <aside className="fixed left-0 top-0 h-full w-64 bg-[#0a0a0a] border-r border-gray-800 flex flex-col">
@@ -88,10 +109,10 @@ export default function Sidebar() {
             <div className="p-4 border-t border-gray-800">
                 <div className="flex items-center space-x-3">
                     <div className="w-8 h-8 bg-gray-800 rounded-lg flex items-center justify-center">
-                        <span className="text-gray-400 text-sm font-medium">TN</span>
+                        <span className="text-gray-400 text-sm font-medium">{initials}</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                        <p className="text-white text-sm truncate">tchi network</p>
+                        <p className="text-white text-sm truncate">{displayName}</p>
                     </div>
                     <button
                         onClick={handleLogout}
