@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 
 interface Plan {
@@ -31,17 +32,27 @@ interface Usage {
 }
 
 export default function BillingPage() {
+    const searchParams = useSearchParams();
     const [plans, setPlans] = useState<Plan[]>([]);
     const [subscription, setSubscription] = useState<Subscription | null>(null);
     const [usage, setUsage] = useState<Usage | null>(null);
     const [loading, setLoading] = useState(true);
     const [upgrading, setUpgrading] = useState<string | null>(null);
     const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly");
+    const [showSuccessAlert, setShowSuccessAlert] = useState(false);
     const supabase = createClient();
 
     useEffect(() => {
-        loadBillingData();
-    }, []);
+        // Check for payment success
+        const paymentStatus = searchParams.get("payment");
+        if (paymentStatus === "success") {
+            setShowSuccessAlert(true);
+            // Reload subscription data
+            loadBillingData();
+        } else {
+            loadBillingData();
+        }
+    }, [searchParams]);
 
     const loadBillingData = async () => {
         const timeoutId = setTimeout(() => {
@@ -155,6 +166,27 @@ export default function BillingPage() {
         <div>
             <h1 className="text-2xl font-bold text-white mb-2">Billing & Subscription</h1>
             <p className="text-gray-400 mb-8">Choose the plan that fits your needs</p>
+
+            {/* Success Alert */}
+            {showSuccessAlert && (
+                <div className="bg-[#25D366]/10 border border-[#25D366] rounded-xl p-4 mb-6 flex items-start">
+                    <svg className="w-5 h-5 text-[#25D366] mr-3 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    <div>
+                        <h3 className="text-[#25D366] font-semibold">Payment Successful!</h3>
+                        <p className="text-gray-300 text-sm mt-1">Your subscription has been activated. It may take a few minutes to reflect.</p>
+                    </div>
+                    <button
+                        onClick={() => setShowSuccessAlert(false)}
+                        className="ml-auto text-gray-400 hover:text-white"
+                    >
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+            )}
 
             {/* Current Plan Card */}
             {subscription && (
