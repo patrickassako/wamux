@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from src.core.auth import get_current_user
 from src.models.support import SupportTicketRequest, SupportTicketResponse
-from src.core.database import get_supabase_client
+from src.core.supabase import get_supabase_service_client as get_supabase_client
 from datetime import datetime
 import logging
 
