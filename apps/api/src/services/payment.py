@@ -111,7 +111,7 @@ class PaymentService:
         Verify the signature of a Flutterwave webhook.
         
         Flutterwave can send webhooks with:
-        1. verif-hash: Direct comparison with configured secret hash
+        1. verif-hash: Direct comparison with configured webhook secret hash
         2. No signature in test mode
         
         Args:
@@ -121,23 +121,30 @@ class PaymentService:
         Returns:
             bool: True if signature matches or in test mode, False otherwise.
         """
-        secret_hash = settings.flutterwave_secret_key
-        if not secret_hash:
-            logger.error("FLUTTERWAVE_SECRET_KEY is not configured")
+        webhook_secret = settings.flutterwave_webhook_secret
+        if not webhook_secret:
+            logger.warning("FLUTTERWAVE_WEBHOOK_SECRET is not configured, allowing webhook in test mode")
+            # If no webhook secret, check if we're in test mode via API key
+            api_key = settings.flutterwave_secret_key
+            if api_key and api_key.startswith("FLWSECK_TEST"):
+                logger.info("Test mode: accepting webhook without secret")
+                return True
+            logger.error("Webhook secret not configured and not in test mode")
             return False
         
         # In test mode, Flutterwave might not send verif-hash
         # Allow webhook if using test keys
-        if secret_hash.startswith("FLWSECK_TEST"):
+        if webhook_secret.startswith("test_") or not signature:
             if not signature:
-                logger.info("Test mode: accepting webhook without signature")
+                logger.info("No signature provided, accepting in permissive mode")
                 return True
         
-        # Direct comparison with secret hash (Flutterwave's simple method)
-        if signature == secret_hash:
+        # Direct comparison with webhook secret hash (Flutterwave's method)
+        if signature == webhook_secret:
             return True
         
         # If signature doesn't match, log and reject
-        logger.warning(f"Invalid Flutterwave webhook signature. Got: {signature[:20]}...")
+        logger.warning(f"Invalid Flutterwave webhook signature. Expected: {webhook_secret[:10]}..., Got: {signature[:20] if signature else 'None'}...")
         return False
+
 

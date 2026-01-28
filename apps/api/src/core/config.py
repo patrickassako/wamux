@@ -58,10 +58,11 @@ class Settings(BaseSettings):
         """Parse CORS origins from comma-separated string."""
         return [origin.strip() for origin in self.cors_origins_raw.split(",")]
     
-    # Payment (Flutterwave)
-    flutterwave_public_key: str | None = Field(default=None, alias="FLUTTERWAVE_PUBLIC_KEY")
-    flutterwave_secret_key: str | None = Field(default=None, alias="FLUTTERWAVE_SECRET_KEY")
-    flutterwave_encryption_key: str | None = Field(default=None, alias="FLUTTERWAVE_ENCRYPTION_KEY")
+    # Flutterwave Payment Configuration
+    flutterwave_public_key: str = Field(default="", validation_alias="FLUTTERWAVE_PUBLIC_KEY")
+    flutterwave_secret_key: str = Field(default="", validation_alias="FLUTTERWAVE_SECRET_KEY")
+    flutterwave_webhook_secret: str = Field(default="", validation_alias="FLUTTERWAVE_WEBHOOK_SECRET")
+    flutterwave_encryption_key: str = Field(default="", validation_alias="FLUTTERWAVE_ENCRYPTION_KEY")
     
     # Rate Limiting
     rate_limit_per_minute: int = Field(default=60, alias="RATE_LIMIT_PER_MINUTE")
