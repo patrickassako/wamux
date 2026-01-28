@@ -43,16 +43,46 @@ export default function BillingPage() {
     const supabase = createClient();
 
     useEffect(() => {
-        // Check for payment success
+        // Check for payment success and verify
         const paymentStatus = searchParams.get("payment");
-        if (paymentStatus === "success") {
-            setShowSuccessAlert(true);
-            // Reload subscription data
-            loadBillingData();
+        const transactionId = searchParams.get("transaction_id");
+
+        if (paymentStatus === "success" && transactionId) {
+            verifyPayment(transactionId);
         } else {
             loadBillingData();
         }
     }, [searchParams]);
+
+    const verifyPayment = async (transactionId: string) => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                setLoading(false);
+                return;
+            }
+
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/billing/verify-payment`, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${session.access_token}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ transaction_id: transactionId }),
+            });
+
+            if (response.ok) {
+                setShowSuccessAlert(true);
+                // Reload billing data after successful verification
+                await loadBillingData();
+            } else {
+                const error = await response.json();
+                console.error("Payment verification failed:", error);
+            }
+        } catch (error) {
+            console.error("Error verifying payment:", error);
+        }
+    };
 
     const loadBillingData = async () => {
         const timeoutId = setTimeout(() => {

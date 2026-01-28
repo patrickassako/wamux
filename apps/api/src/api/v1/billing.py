@@ -85,6 +85,108 @@ async def subscribe(
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 
+@router.post("/verify-payment")
+async def verify_payment(
+    request: Request,
+    user=Depends(get_current_user)
+):
+    """Verify Flutterwave payment and activate subscription"""
+    import httpx
+    from ...core.config import settings
+    from ...utils.logger import logger
+    
+    try:
+        body = await request.json()
+        transaction_id = body.get("transaction_id")
+        
+        if not transaction_id:
+            raise HTTPException(status_code=400, detail="Missing transaction_id")
+        
+        # Call Flutterwave API to verify transaction
+        secret_key = settings.flutterwave_secret_key
+        if not secret_key:
+            raise HTTPException(status_code=500, detail="Payment configuration error")
+        
+        async with httpx.AsyncClient() as client:
+            verify_url = f"https://api.flutterwave.com/v3/transactions/{transaction_id}/verify"
+            headers = {"Authorization": f"Bearer {secret_key}"}
+            
+            response = await client.get(verify_url, headers=headers, timeout=10.0)
+            
+            if not response.is_success:
+                logger.error(f"Flutterwave verification failed: {response.text}")
+                raise HTTPException(status_code=400, detail="Payment verification failed")
+            
+            data = response.json()
+            
+            # Check if payment was successful
+            if data.get("status") != "success":
+                raise HTTPException(status_code=400, detail="Payment not successful")
+            
+            payment_data = data.get("data", {})
+            
+            if payment_data.get("status") != "successful":
+                raise HTTPException(status_code=400, detail="Payment not completed")
+            
+            # Extract tx_ref to get plan info
+            tx_ref = payment_data.get("tx_ref")
+            if not tx_ref:
+                raise HTTPException(status_code=400, detail="Invalid payment reference")
+            
+            # Parse tx_ref: sub_{user_id}_{plan}_{timestamp}
+            parts = tx_ref.split("_")
+            if len(parts) < 4 or parts[0] != "sub":
+                raise HTTPException(status_code=400, detail="Invalid transaction reference")
+            
+            payment_user_id = parts[1]
+            plan_str = parts[2]
+            
+            # Verify user owns this transaction
+            if payment_user_id != str(user["id"]):
+                raise HTTPException(status_code=403, detail="Unauthorized transaction")
+            
+            # Activate subscription
+            try:
+                plan = PlanType(plan_str)
+                plan_config = PLAN_LIMITS[plan]
+                
+                supabase = get_supabase_client()
+                
+                result = supabase.table("subscriptions").upsert({
+                    "user_id": str(user["id"]),
+                    "plan": plan.value,
+                    "status": "active",
+                    "stripe_subscription_id": str(payment_data.get("id")),
+                    "stripe_customer_id": payment_data.get("customer", {}).get("email"),
+                    "message_limit": plan_config["message_limit"],
+                    "rate_limit_per_minute": plan_config["rate_limit_per_minute"],
+                    "sessions_limit": plan_config["sessions_limit"],
+                    "current_period_start": datetime.now().isoformat(),
+                    "current_period_end": (datetime.now() + timedelta(days=30)).isoformat()
+                }, on_conflict="user_id").execute()
+                
+                logger.info(f"Subscription activated for user {user['id']} - Plan: {plan.value} via payment verification")
+                
+                return {
+                    "success": True,
+                    "message": "Subscription activated successfully",
+                    "plan": plan.value,
+                    "subscription": SubscriptionResponse(**result.data[0])
+                }
+                
+            except ValueError as e:
+                logger.error(f"Invalid plan in tx_ref: {plan_str}")
+                raise HTTPException(status_code=400, detail=f"Invalid plan: {plan_str}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        logger.error(f"Payment verification error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Verification failed: {str(e)}")
+
+
 @router.get("/plans")
 async def get_plans():
     """Get all available subscription plans"""
