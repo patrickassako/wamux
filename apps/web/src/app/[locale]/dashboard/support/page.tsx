@@ -102,7 +102,7 @@ export default function SupportPage() {
                         </a>
 
                         <a
-                            href="mailto:support@wamux.com"
+                            href="mailto:contact@wamux.com"
                             className="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-800/50 transition mb-2"
                         >
                             <svg className="w-5 h-5 text-[#25D366]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -110,12 +110,12 @@ export default function SupportPage() {
                             </svg>
                             <div>
                                 <p className="text-white text-sm font-medium">Email Support</p>
-                                <p className="text-gray-400 text-xs">support@wamux.com</p>
+                                <p className="text-gray-400 text-xs">contact@wamux.com</p>
                             </div>
                         </a>
 
                         <a
-                            href="https://wa.me/237XXXXXXXXX"
+                            href="https://wa.me/237694788215"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-800/50 transition"
@@ -125,7 +125,7 @@ export default function SupportPage() {
                             </svg>
                             <div>
                                 <p className="text-white text-sm font-medium">WhatsApp</p>
-                                <p className="text-gray-400 text-xs">Chat with us</p>
+                                <p className="text-gray-400 text-xs">+237 694 788 215</p>
                             </div>
                         </a>
                     </div>
