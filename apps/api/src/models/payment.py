@@ -8,32 +8,38 @@ def to_camel(string: str) -> str:
 
 class PaymentLinkRequest(BaseModel):
     """
-    Request model for creating a payment link via My-CoolPay.
+    Request model for creating a payment link via Flutterwave.
     """
     model_config = ConfigDict(
         populate_by_name=True,
         alias_generator=to_camel
     )
 
-    transaction_amount: int = Field(..., gt=0, description="Amount to be paid")
-    transaction_currency: Literal["XAF", "EUR"] = Field(default="XAF", description="Currency (XAF or EUR)")
+    transaction_amount: int | float = Field(..., gt=0, description="Amount to be paid")
+    transaction_currency: Literal["XAF", "XOF", "NGN", "GHS", "KES", "UGX", "TZS", "ZMW", "USD", "EUR"] = Field(
+        default="XAF", 
+        description="Currency code"
+    )
     transaction_reason: str | None = Field(default=None, min_length=1, max_length=100, description="Reason for payment")
     app_transaction_ref: str = Field(..., min_length=1, description="Unique reference from the application")
     customer_name: str | None = Field(default=None, min_length=1, description="Payer name")
     customer_phone_number: str | None = Field(default=None, description="Payer phone number")
     customer_email: EmailStr | None = Field(default=None, description="Payer email")
-    customer_lang: Literal["en", "fr"] = Field(default="fr", description="Language (en or fr)")
+    # Flutterwave-specific
+    payment_options: str = Field(default="card,mobilemoney", description="Available payment methods")
+    redirect_url: str | None = Field(default=None, description="URL to redirect after payment")
 
 class PaymentLinkResponse(BaseModel):
     """
-    Response model from My-CoolPay payment link creation.
+    Response model from Flutterwave payment link creation.
     """
     model_config = ConfigDict(
         populate_by_name=True,
         alias_generator=to_camel
     )
     
-    status: str = Field(description="Status of the request (e.g., success)")
-    payment_url: str | None = Field(default=None, description="The URL to redirect the user to")
-    transaction_ref: str | None = Field(default=None, description="The My-CoolPay transaction reference")
+    status: str = Field(description="Status of the request (success/error)")
+    payment_url: str | None = Field(default=None, description="Hosted payment link")
+    transaction_ref: str | None = Field(default=None, description="Flutterwave transaction reference")
     custom_error: str | None = Field(default=None, description="Error message if failed")
+

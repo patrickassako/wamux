@@ -111,6 +111,8 @@ async def send_text_message(
     
     Returns 202 Accepted - message is processed asynchronously.
     """
+    print(f"[DEBUG] Received send_text_message request. To: {request.to}")
+    print(f"[DEBUG] Current User ID: {current_user.get('id')}")
     # Get user's default session if not specified
     session_id = request.session_id
     if not session_id:
@@ -151,7 +153,9 @@ async def send_text_message(
         )
     
     # Check and increment quota
+    print("[DEBUG] Calling check_and_increment_quota...")
     await check_and_increment_quota(current_user['id'], supabase)
+    print("[DEBUG] check_and_increment_quota completed")
     
     # Create message record
     message_result = supabase.table('messages').insert({
@@ -168,6 +172,7 @@ async def send_text_message(
     # Publish SEND_TEXT command to Redis
     redis_client = await RedisClient.get_client()
     producer = StreamProducer(redis_client)
+    print(f"[DEBUG] Publishing SEND_TEXT to Redis for message {message_data['id']}")
     await producer.publish_command(
         "SEND_TEXT",
         {

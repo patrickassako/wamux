@@ -1,4 +1,5 @@
 import httpx
+import hashlib
 from typing import Any
 from ..core.config import settings
 from ..models.payment import PaymentLinkRequest, PaymentLinkResponse
@@ -6,14 +7,14 @@ from ..utils.logger import logger
 
 class PaymentService:
     """
-    Service for interacting with the My-CoolPay API.
+    Service for interacting with the Flutterwave API.
     """
-    BASE_URL = "https://my-coolpay.com/api"
+    BASE_URL = "https://api.flutterwave.com/v3"
 
     @classmethod
     async def create_payment_link(cls, request_data: PaymentLinkRequest) -> PaymentLinkResponse:
         """
-        Create a payment link.
+        Create a Flutterwave Standard payment link.
         
         Args:
             request_data: The payment request details.
@@ -25,112 +26,119 @@ class PaymentService:
             ValueError: If configuration is missing.
             httpx.HTTPError: If the API request fails.
         """
-        public_key = settings.coolpay_public_key
-        if not public_key:
-            logger.error("COOLPAY_PUBLIC_KEY is not configured")
-            raise ValueError("Payment provider configuration missing (COOLPAY_PUBLIC_KEY)")
+        secret_key = settings.flutterwave_secret_key
+        if not secret_key:
+            logger.error("FLUTTERWAVE_SECRET_KEY is not configured")
+            raise ValueError("Payment provider configuration missing (FLUTTERWAVE_SECRET_KEY)")
 
-        # Construct URL: https://my-coolpay.com/api/{public_key}/paylink
-        url = f"{cls.BASE_URL}/{public_key}/paylink"
+        url = f"{cls.BASE_URL}/payments"
         
-        # Prepare payload (snake_case keys as expected by CoolPay)
-        payload = request_data.model_dump(mode="json")
+        # Build Flutterwave payload
+        payload = {
+            "tx_ref": request_data.app_transaction_ref,
+            "amount": str(request_data.transaction_amount),
+            "currency": request_data.transaction_currency,
+            "redirect_url": request_data.redirect_url or "https://wamux.com/payment/callback",
+            "payment_options": request_data.payment_options,
+            "customer": {
+                "email": request_data.customer_email or "noreply@wamux.com",
+                "phonenumber": request_data.customer_phone_number,
+                "name": request_data.customer_name or "Customer"
+            },
+            "customizations": {
+                "title": "WhatsApp API Subscription",
+                "description": request_data.transaction_reason or "Subscription Payment",
+                "logo": "https://wamux.com/logo.png"
+            }
+        }
         
-        logger.info(f"Initiating payment link creation. Ref: {request_data.app_transaction_ref}, Amount: {request_data.transaction_amount}")
+        headers = {
+            "Authorization": f"Bearer {secret_key}",
+            "Content-Type": "application/json"
+        }
+        
+        logger.info(f"Initiating Flutterwave payment. Ref: {request_data.app_transaction_ref}, Amount: {request_data.transaction_amount} {request_data.transaction_currency}")
 
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.post(url, json=payload, timeout=30.0)
+                response = await client.post(url, json=payload, headers=headers, timeout=30.0)
                 
-                # Log response for debugging (sensitive info should be redacted in production, 
-                # but payment link creation usually just returns a URL)
-                logger.debug(f"CoolPay Response [{response.status_code}]: {response.text}")
+                logger.debug(f"Flutterwave Response [{response.status_code}]: {response.text}")
                 
                 response.raise_for_status()
                 
                 data = response.json()
                 
-                # Map keys safely. 
-                # Note: Exact response keys from CoolPay regarding success are usually:
-                # { "status": "success", "payment_url": "...", "transaction_ref": "..." }
-                # If they differ, this might need adjustment after testing.
+                # Flutterwave Standard response structure:
+                # {
+                #   "status": "success",
+                #   "message": "Hosted Link",
+                #   "data": {
+                #     "link": "https://checkout.flutterwave.com/..."
+                #   }
+                # }
                 
-                return PaymentLinkResponse(
-                    status=data.get("status", "unknown"),
-                    payment_url=data.get("payment_url"),
-                    transaction_ref=data.get("transaction_ref") 
-                )
+                if data.get("status") == "success":
+                    payment_link = data.get("data", {}).get("link")
+                    return PaymentLinkResponse(
+                        status="success",
+                        payment_url=payment_link,
+                        transaction_ref=request_data.app_transaction_ref
+                    )
+                else:
+                    error_msg = data.get("message", "Unknown error")
+                    return PaymentLinkResponse(
+                        status="error",
+                        payment_url=None,
+                        transaction_ref=None,
+                        custom_error=error_msg
+                    )
                 
             except httpx.HTTPStatusError as e:
                 error_content = e.response.text
-                logger.error(f"CoolPay API Error: {error_content}")
-                # Raise a ValueError with the specific error message from CoolPay so it propagates to the API response
-                raise ValueError(f"CoolPay API Error: {error_content}") from e
+                logger.error(f"Flutterwave API Error: {error_content}")
+                raise ValueError(f"Flutterwave API Error: {error_content}") from e
             except httpx.RequestError as e:
-                logger.error(f"CoolPay Network Error: {str(e)}")
+                logger.error(f"Flutterwave Network Error: {str(e)}")
                 raise e
             except Exception as e:
                 logger.error(f"Unexpected error in PaymentService: {str(e)}")
                 raise e
 
     @classmethod
-    def verify_webhook_signature(cls, payload: dict) -> bool:
+    def verify_webhook_signature(cls, payload: dict, signature: str) -> bool:
         """
-        Verify the signature of the My-CoolPay callback.
+        Verify the signature of a Flutterwave webhook.
         
-        Signature Formula: 
-        md5(transaction_ref + transaction_type + transaction_amount + transaction_currency + transaction_operator + private_key)
+        Flutterwave signs webhooks using SHA256 HMAC with the secret hash.
         
         Args:
-            payload: The dictionary containing the callback data.
+            payload: The webhook payload (dict).
+            signature: The verif-hash from headers.
             
         Returns:
             bool: True if signature matches, False otherwise.
         """
-        import hashlib
-        
-        private_key = settings.coolpay_private_key
-        if not private_key:
-            logger.error("COOLPAY_PRIVATE_KEY is not configured")
+        secret_hash = settings.flutterwave_secret_key
+        if not secret_hash:
+            logger.error("FLUTTERWAVE_SECRET_KEY is not configured")
             return False
-            
-        required_fields = [
-            "transaction_ref", "transaction_type", "transaction_amount", 
-            "transaction_currency", "transaction_operator", "signature"
-        ]
         
-        # Check presence of required fields
-        if not all(k in payload for k in required_fields):
-            logger.warning("Missing fields in webhook payload for signature verification")
-            return False
-            
-        # Construct data string for hashing
-        # Note: Integers should be stringified without leading zeros.
-        # My-CoolPay documentation says "Numbers should be converted to strings WITHOUT non-significant zeros".
-        # Python's str(int) does exactly that.
+        # Flutterwave sends the hash in the header as 'verif-hash'
+        # We verify by hashing the entire JSON body with our secret
         
-        data_string = (
-            f"{payload.get('transaction_ref', '')}"
-            f"{payload.get('transaction_type', '')}"
-            f"{str(payload.get('transaction_amount', ''))}"
-            f"{payload.get('transaction_currency', '')}"
-            f"{payload.get('transaction_operator', '')}"
-            f"{private_key}"
-        )
+        # Convert payload dict back to JSON string
+        import json
+        json_payload = json.dumps(payload, separators=(',', ':'), sort_keys=True)
         
-        # Calculate MD5 hash
-        calculated_signature = hashlib.md5(data_string.encode('utf-8')).hexdigest()
+        # Calculate hash
+        calculated_hash = hashlib.sha256(
+            (secret_hash + json_payload).encode('utf-8')
+        ).hexdigest()
         
-        # Compare (case-insensitive usually safe for hex, but docs imply lowercase often)
-        # Provided signature in example is lowercase.
-        received_signature = payload.get("signature", "").lower()
-        
-        is_valid = calculated_signature.lower() == received_signature
+        is_valid = calculated_hash == signature
         
         if not is_valid:
-            logger.warning(
-                f"Invalid signature. Calc: {calculated_signature} vs Recv: {received_signature}. "
-                f"Data: {data_string.replace(private_key, '***')}"
-            )
-            
+            logger.warning(f"Invalid Flutterwave webhook signature. Expected: {calculated_hash}, Got: {signature}")
+        
         return is_valid

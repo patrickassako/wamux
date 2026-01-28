@@ -35,7 +35,7 @@ export default function CheckoutPage() {
                         </div>
                         <p className="text-gray-400 leading-relaxed">
                             You are about to subscribe to the {selectedPlan.label} plan.
-                            Secure payment processing via My-CoolPay.
+                            Secure payment via Flutterwave (💳 Cards + 📱 Mobile Money).
                         </p>
                     </div>
                     <div className="mt-8 pt-8 border-t border-gray-800">

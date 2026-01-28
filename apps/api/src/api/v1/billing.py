@@ -187,7 +187,7 @@ async def create_checkout_session(
     request: CheckoutRequest,
     user=Depends(get_current_user)
 ):
-    """Create a My-CoolPay payment session for upgrading"""
+    """Create a Flutterwave payment session for upgrading"""
     try:
         if request.plan == PlanType.FREE:
             raise HTTPException(status_code=400, detail="Cannot checkout for free plan. Use /subscribe endpoint.")
@@ -197,26 +197,23 @@ async def create_checkout_session(
         if not plan_config:
              raise HTTPException(status_code=400, detail=f"Plan config not found for {request.plan}")
              
-        amount = plan_config["price_monthly"] * 655 # Convert EUR to XAF roughly or use configured rate? 
-        # Wait, PLAN_LIMITS has simple ints like 4, 11, 23, 40. Docs say transaction_amount in XAF by default.
-        # Assuming prices in PLAN_LIMITS are EUR. 1 EUR ~= 655.957 XAF.
-        # Let's fix this conversion or assume input is XAF if that was the intent.
-        # Given "whatsappAPI" context and "Patrick Assako" (Cameroon name likely), XAF is primary. 
-        # But prices 4, 11, 23 look like USD/EUR. 4 XAF is nothing. 
-        # I will use a fixed rate of 656 for now.
-        amount_xaf = int(amount * 656) 
+        # Get price in XAF (prices in PLAN_LIMITS are assumed to be in EUR)
+        # Convert EUR to XAF: 1 EUR ~= 656 XAF
+        price_eur = plan_config["price_monthly"]
+        amount_xaf = int(price_eur * 656)
         
-        # Generate unique ref: sub_<user_id>_<plan>_<timestamp>
-        # Encode plan and user to recover in webhook
+        # Generate unique ref
         timestamp = int(datetime.now().timestamp())
         app_transaction_ref = f"sub_{user['id']}_{request.plan.value}_{timestamp}"
         
         customer_name = user.get("user_metadata", {}).get("full_name", user["email"].split("@")[0])
         customer_email = user["email"]
-        # Dummy phone if missing, required by Pydantic model but optional in API? 
-        # My subagent said optional in API. But my Pydantic model says `...` (Required). 
-        # I should provide a dummy if missing.
         customer_phone = user.get("user_metadata", {}).get("phone", "600000000")
+
+        # Get frontend URL for redirect
+        import os
+        frontend_url = os.getenv("NEXT_PUBLIC_APP_URL", "http://localhost:3000")
+        redirect_url = f"{frontend_url}/dashboard/billing?payment=success"
 
         payment_request = PaymentLinkRequest(
             transaction_amount=amount_xaf,
@@ -226,7 +223,8 @@ async def create_checkout_session(
             customer_name=customer_name,
             customer_phone_number=customer_phone,
             customer_email=customer_email,
-            customer_lang="fr"
+            payment_options="card,mobilemoney",
+            redirect_url=redirect_url
         )
         
         response = await PaymentService.create_payment_link(payment_request)
@@ -272,58 +270,69 @@ async def create_portal_session(user=Depends(get_current_user)):
 
 @router.post("/webhook")
 async def webhook(request: Request):
-    """Handle My-CoolPay webhook events"""
+    """Handle Flutterwave webhook events"""
     
     try:
         payload = await request.json()
         
-        # Verify signature
-        if not PaymentService.verify_webhook_signature(payload):
-            raise HTTPException(status_code=400, detail="Invalid signature")
-            
-        status = payload.get("transaction_status")
-        app_ref = payload.get("app_transaction_ref")
+        # Get Flutterwave signature from headers
+        verif_hash = request.headers.get("verif-hash", "")
         
-        if status == "SUCCESS" and app_ref:
-            # Parse app_ref to get user and plan
-            # Format: sub_{user_id}_{plan}_{timestamp}
-            parts = app_ref.split("_")
-            if len(parts) >= 4 and parts[0] == "sub":
-                # Handle potentially underscores in user_id? UUIDs don't have underscores.
-                # parts[0] = sub
-                # parts[1] = user_id
-                # parts[2] = plan
-                # parts[3] = timestamp
-                user_id = parts[1]
-                plan_str = parts[2]
-                
-                try:
-                    plan = PlanType(plan_str)
-                    plan_config = PLAN_LIMITS[plan]
+        # Verify signature
+        if not PaymentService.verify_webhook_signature(payload, verif_hash):
+            logger.warning("Invalid Flutterwave webhook signature")
+            raise HTTPException(status_code=401, detail="Invalid signature")
+            
+        # Flutterwave webhook structure:
+        # {
+        #   "event": "charge.completed",
+        #   "data": {
+        #     "id": 12345,
+        #     "tx_ref": "sub_...",
+        #     "amount": 2624,
+        #     "currency": "XAF",
+        #     "status": "successful",
+        #     ...
+        #   }
+        # }
+        
+        event = payload.get("event")
+        data = payload.get("data", {})
+        
+        if event == "charge.completed" and data.get("status") == "successful":
+            tx_ref = data.get("tx_ref")
+            
+            if tx_ref:
+                # Parse tx_ref: sub_{user_id}_{plan}_{timestamp}
+                parts = tx_ref.split("_")
+                if len(parts) >= 4 and parts[0] == "sub":
+                    user_id = parts[1]
+                    plan_str = parts[2]
                     
-                    supabase = get_supabase_client()
-                    
-                    # Update subscription
-                    # Note: We don't have Stripe ID anymore. We use 'stripe_subscription_id' column 
-                    # genericly for payment provider ID if needed, or leave it. 
-                    # Or better: use 'stripe_subscription_id' for 'transaction_ref' from CoolPay.
-                    
-                    supabase.table("subscriptions").upsert({
-                        "user_id": user_id,
-                        "plan": plan.value,
-                        "status": "active",
-                        "stripe_subscription_id": payload.get("transaction_ref"), 
-                        "stripe_customer_id": payload.get("customer_phone_number"), # Use phone as customer ID ref?
-                        "message_limit": plan_config["message_limit"],
-                        "rate_limit_per_minute": plan_config["rate_limit_per_minute"],
-                        "sessions_limit": plan_config["sessions_limit"],
-                        "current_period_start": datetime.now().isoformat(),
-                         # 30 days validity for manual payment
-                        "current_period_end": (datetime.now() + timedelta(days=30)).isoformat()
-                    }, on_conflict="user_id").execute()
-                    
-                except ValueError:
-                    print(f"Invalid plan in ref: {plan_str}")
+                    try:
+                        plan = PlanType(plan_str)
+                        plan_config = PLAN_LIMITS[plan]
+                        
+                        supabase = get_supabase_client()
+                        
+                        # Activate subscription
+                        supabase.table("subscriptions").upsert({
+                            "user_id": user_id,
+                            "plan": plan.value,
+                            "status": "active",
+                            "stripe_subscription_id": str(data.get("id")),  # Flutterwave transaction ID
+                            "stripe_customer_id": data.get("customer", {}).get("email"),
+                            "message_limit": plan_config["message_limit"],
+                            "rate_limit_per_minute": plan_config["rate_limit_per_minute"],
+                            "sessions_limit": plan_config["sessions_limit"],
+                            "current_period_start": datetime.now().isoformat(),
+                            "current_period_end": (datetime.now() + timedelta(days=30)).isoformat()
+                        }, on_conflict="user_id").execute()
+                        
+                        logger.info(f"Subscription activated for user {user_id} - Plan: {plan.value}")
+                        
+                    except ValueError:
+                        logger.error(f"Invalid plan in tx_ref: {plan_str}")
         
         return {"received": True}
         
