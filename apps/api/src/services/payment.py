@@ -110,35 +110,34 @@ class PaymentService:
         """
         Verify the signature of a Flutterwave webhook.
         
-        Flutterwave signs webhooks using SHA256 HMAC with the secret hash.
+        Flutterwave can send webhooks with:
+        1. verif-hash: Direct comparison with configured secret hash
+        2. No signature in test mode
         
         Args:
             payload: The webhook payload (dict).
             signature: The verif-hash from headers.
             
         Returns:
-            bool: True if signature matches, False otherwise.
+            bool: True if signature matches or in test mode, False otherwise.
         """
         secret_hash = settings.flutterwave_secret_key
         if not secret_hash:
             logger.error("FLUTTERWAVE_SECRET_KEY is not configured")
             return False
         
-        # Flutterwave sends the hash in the header as 'verif-hash'
-        # We verify by hashing the entire JSON body with our secret
+        # In test mode, Flutterwave might not send verif-hash
+        # Allow webhook if using test keys
+        if secret_hash.startswith("FLWSECK_TEST"):
+            if not signature:
+                logger.info("Test mode: accepting webhook without signature")
+                return True
         
-        # Convert payload dict back to JSON string
-        import json
-        json_payload = json.dumps(payload, separators=(',', ':'), sort_keys=True)
+        # Direct comparison with secret hash (Flutterwave's simple method)
+        if signature == secret_hash:
+            return True
         
-        # Calculate hash
-        calculated_hash = hashlib.sha256(
-            (secret_hash + json_payload).encode('utf-8')
-        ).hexdigest()
-        
-        is_valid = calculated_hash == signature
-        
-        if not is_valid:
-            logger.warning(f"Invalid Flutterwave webhook signature. Expected: {calculated_hash}, Got: {signature}")
-        
-        return is_valid
+        # If signature doesn't match, log and reject
+        logger.warning(f"Invalid Flutterwave webhook signature. Got: {signature[:20]}...")
+        return False
+

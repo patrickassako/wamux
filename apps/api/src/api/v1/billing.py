@@ -372,17 +372,20 @@ async def create_portal_session(user=Depends(get_current_user)):
 
 @router.post("/webhook")
 async def webhook(request: Request):
-    """Handle Flutterwave webhook events"""
+    """Handle Flutterwave webhook events (backup for payment verification)"""
     
     try:
         payload = await request.json()
+        
+        # Log webhook received
+        logger.info(f"Flutterwave webhook received: event={payload.get('event')}")
         
         # Get Flutterwave signature from headers
         verif_hash = request.headers.get("verif-hash", "")
         
         # Verify signature
         if not PaymentService.verify_webhook_signature(payload, verif_hash):
-            logger.warning("Invalid Flutterwave webhook signature")
+            logger.warning(f"Invalid Flutterwave webhook signature for event: {payload.get('event')}")
             raise HTTPException(status_code=401, detail="Invalid signature")
             
         # Flutterwave webhook structure:
@@ -403,6 +406,9 @@ async def webhook(request: Request):
         
         if event == "charge.completed" and data.get("status") == "successful":
             tx_ref = data.get("tx_ref")
+            transaction_id = data.get("id")
+            
+            logger.info(f"Processing successful payment: tx_ref={tx_ref}, transaction_id={transaction_id}")
             
             if tx_ref:
                 # Parse tx_ref: sub_{user_id}_{plan}_{timestamp}
@@ -417,7 +423,19 @@ async def webhook(request: Request):
                         
                         supabase = get_supabase_client()
                         
-                        # Activate subscription
+                        # Check if subscription already activated (by /verify-payment)
+                        existing = supabase.table("subscriptions")\
+                            .select("id, status")\
+                            .eq("user_id", user_id)\
+                            .limit(1)\
+                            .execute()
+                        
+                        if existing.data and existing.data[0].get("status") == "active":
+                            logger.info(f"Subscription already active for user {user_id}, webhook is backup (idempotent)")
+                        else:
+                            logger.info(f"Activating subscription via webhook for user {user_id}")
+                        
+                        # Activate subscription (upsert is idempotent)
                         supabase.table("subscriptions").upsert({
                             "user_id": user_id,
                             "plan": plan.value,
@@ -431,10 +449,16 @@ async def webhook(request: Request):
                             "current_period_end": (datetime.now() + timedelta(days=30)).isoformat()
                         }, on_conflict="user_id").execute()
                         
-                        logger.info(f"Subscription activated for user {user_id} - Plan: {plan.value}")
+                        logger.info(f"✅ Subscription activated for user {user_id} - Plan: {plan.value} (via webhook)")
                         
-                    except ValueError:
-                        logger.error(f"Invalid plan in tx_ref: {plan_str}")
+                    except ValueError as e:
+                        logger.error(f"Invalid plan in tx_ref: {plan_str}, error: {str(e)}")
+                else:
+                    logger.warning(f"Invalid tx_ref format: {tx_ref}")
+            else:
+                logger.warning("No tx_ref in webhook payload")
+        else:
+            logger.info(f"Webhook event ignored: {event}, status: {data.get('status')}")
         
         return {"received": True}
         
@@ -443,4 +467,6 @@ async def webhook(request: Request):
     except Exception as e:
         import traceback
         traceback.print_exc()
+        logger.error(f"Webhook processing failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Webhook processing failed: {str(e)}")
+
