@@ -57,12 +57,38 @@ export class SessionManager {
             // Get latest Baileys version
             const { version } = await fetchLatestBaileysVersion();
 
+            // Custom logger wrapper to filter out noisy decryption errors from status broadcasts
+            const filteredLogger = logger.child({ sessionId }) as any;
+
+            // Wrap the error method to suppress "failed to decrypt" for status broadcasts
+            const originalError = filteredLogger.error.bind(filteredLogger);
+            filteredLogger.error = (obj: any, msg?: string, ...args: any[]) => {
+                // Check if this is a decryption error
+                const isDecryptionError =
+                    (typeof msg === 'string' && msg.includes('failed to decrypt')) ||
+                    (obj && obj.message && obj.message.includes('failed to decrypt'));
+
+                // Check if it's from status broadcast (often missing session/keys after restart)
+                const isStatusBroadcast =
+                    (obj && obj.remoteJid === 'status@broadcast') ||
+                    (obj && obj.key && obj.key.remoteJid === 'status@broadcast') ||
+                    (JSON.stringify(obj || {}).includes('status@broadcast'));
+
+                if (isDecryptionError && isStatusBroadcast) {
+                    // Downgrade to debug to avoid spamming logs
+                    filteredLogger.debug(obj, msg, ...args);
+                    return;
+                }
+
+                originalError(obj, msg, ...args);
+            };
+
             // Create WhatsApp socket with optimized settings for datacenter stability
             const sock = makeWASocket({
                 version,
                 auth: state,
                 printQRInTerminal: false, // CRITICAL: Don't print to terminal
-                logger: logger.child({ sessionId }) as any,
+                logger: filteredLogger,
                 browser: ['WhatsApp API Gateway', 'Chrome', '1.0.0'],
 
                 // === STABILITY FIXES FOR 503 ERRORS ===
@@ -633,11 +659,12 @@ export class SessionManager {
         try {
             const supabase = getSupabaseClient();
             await supabase
-                .from('whatsapp_sessions')
-                .update({ last_active: new Date().toISOString() })
+                .from('sessions')
+                .update({ last_activity_at: new Date().toISOString() })
                 .eq('id', sessionId);
+            logger.debug({ sessionId }, 'Updated last_activity_at');
         } catch (error: any) {
-            logger.error({ sessionId, error: error.message }, 'Failed to update last_active');
+            logger.error({ sessionId, error: error.message }, 'Failed to update last_activity_at');
         }
     }
 

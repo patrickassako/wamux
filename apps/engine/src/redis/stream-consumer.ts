@@ -34,9 +34,13 @@ export class StreamConsumer {
                 '0',
                 'MKSTREAM'
             );
+            // Success
             logger.info(`Created consumer group: ${this.consumerGroup}`);
         } catch (err: any) {
-            if (!err.message.includes('BUSYGROUP')) {
+            // Check for BUSYGROUP error (Consumer Group name already exists)
+            // Can come as a property message or direct message
+            const errorMessage = err.message || err.toString();
+            if (!errorMessage.includes('BUSYGROUP')) {
                 throw err;
             }
             logger.info(`Consumer group already exists: ${this.consumerGroup}`);

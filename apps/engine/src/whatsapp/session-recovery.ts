@@ -18,7 +18,7 @@ export class SessionRecoveryService {
             const { data: sessions, error } = await supabase
                 .from('sessions')
                 .select('*')
-                .eq('status', 'connected');
+                .in('status', ['connected', 'connecting']);
 
             if (error) {
                 throw error;
