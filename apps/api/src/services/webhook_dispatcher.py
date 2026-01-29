@@ -10,6 +10,7 @@ import json
 import asyncio
 import httpx
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Optional
 from supabase import create_client, Client
@@ -214,11 +215,35 @@ class WebhookDispatcher:
         
         # Dispatch with retry
         for attempt in range(self.max_retries):
+            start_time = time.time()
+            response_status = None
+            response_body_text = None
+            error_msg = None
+            
             try:
                 response = await self.http_client.post(
                     url,
                     content=payload_json,
                     headers=headers
+                )
+                
+                response_status = response.status_code
+                response_body_text = response.text[:1000]  # Limit to 1000 chars
+                response_time_ms = int((time.time() - start_time) * 1000)
+                
+                # Log the call
+                await self._log_webhook_call(
+                    webhook_id=webhook_id,
+                    event_id=event.get('id', 'unknown'),
+                    event_type=event_type,
+                    request_url=url,
+                    request_headers=headers,
+                    request_body=payload,
+                    attempt_number=attempt + 1,
+                    response_status=response_status,
+                    response_body=response_body_text,
+                    response_time_ms=response_time_ms,
+                    success=(200 <= response_status < 300)
                 )
                 
                 if response.status_code >= 200 and response.status_code < 300:
@@ -238,6 +263,24 @@ class WebhookDispatcher:
                     logger.warning(f"Webhook {webhook_id} returned {response.status_code}")
                     
             except Exception as e:
+                error_msg = str(e)
+                response_time_ms = int((time.time() - start_time) * 1000)
+                
+                # Log the failed attempt
+                await self._log_webhook_call(
+                    webhook_id=webhook_id,
+                    event_id=event.get('id', 'unknown'),
+                    event_type=event_type,
+                    request_url=url,
+                    request_headers=headers,
+                    request_body=payload,
+                    attempt_number=attempt + 1,
+                    response_status=response_status,
+                    response_time_ms=response_time_ms,
+                    success=False,
+                    error_message=error_msg
+                )
+                
                 logger.error(f"Webhook {webhook_id} attempt {attempt + 1} failed: {e}")
             
             # Wait before retry
@@ -254,6 +297,42 @@ class WebhookDispatcher:
             })\
             .eq('id', webhook_id)\
             .execute()
+    
+    async def _log_webhook_call(
+        self,
+        webhook_id: str,
+        event_id: str,
+        event_type: str,
+        request_url: str,
+        request_headers: dict,
+        request_body: dict,
+        attempt_number: int,
+        response_status: Optional[int] = None,
+        response_body: Optional[str] = None,
+        response_time_ms: Optional[int] = None,
+        success: bool = False,
+        error_message: Optional[str] = None
+    ):
+        """Save webhook call to database for logging/debugging"""
+        try:
+            self.supabase.table('webhook_logs').insert({
+                'webhook_id': webhook_id,
+                'event_id': event_id,
+                'event_type': event_type,
+                'request_url': request_url,
+                'request_headers': request_headers,
+                'request_body': request_body,
+                'response_status': response_status,
+                'response_body': response_body,
+                'response_time_ms': response_time_ms,
+                'attempt_number': attempt_number,
+                'success': success,
+                'error_message': error_message,
+                'created_at': datetime.now(timezone.utc).isoformat()
+            }).execute()
+        except Exception as e:
+            logger.error(f"Failed to log webhook call: {e}")
+
 
 
 def compute_signature(secret: str, timestamp: int, payload: str) -> str:

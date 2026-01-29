@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 
 interface Session {
     id: string;
@@ -64,6 +65,7 @@ const EVENT_CATALOG: EventCategory[] = [
 const DEFAULT_EVENTS = ["message.received", "message.sent", "session.connected", "session.disconnected"];
 
 export default function WebhooksPage() {
+    const router = useRouter();
     const [webhooks, setWebhooks] = useState<Webhook[]>([]);
     const [sessions, setSessions] = useState<Session[]>([]);
     const [loading, setLoading] = useState(true);
@@ -637,6 +639,15 @@ export default function WebhooksPage() {
                                     </div>
                                 </div>
                                 <div className="flex items-center space-x-2 ml-4" onClick={(e) => e.stopPropagation()}>
+                                    <button
+                                        onClick={() => router.push(`/dashboard/webhooks/${webhook.id}/logs`)}
+                                        className="p-2 text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 rounded-lg transition"
+                                        title="View Logs"
+                                    >
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        </svg>
+                                    </button>
                                     <button
                                         onClick={() => testWebhook(webhook.id)}
                                         disabled={testing === webhook.id}

@@ -359,3 +359,73 @@ async def test_webhook(
             "error": str(e),
             "latencyMs": None
         }
+
+
+@router.get("/{webhook_id}/logs")
+async def get_webhook_logs(
+    webhook_id: str,
+    limit: int = 50,
+    success_filter: bool = None,
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_service_client)
+):
+    """
+    Get webhook call logs for debugging and monitoring.
+    
+    - **limit**: Number of logs to retrieve (default: 50, max: 200)
+    - **success_filter**: Filter by success status (true/false/null for all)
+    """
+    # Verify webhook belongs to user
+    webhook_result = supabase.table('webhooks')\
+        .select('id, name, url')\
+        .eq('id', webhook_id)\
+        .eq('user_id', current_user['id'])\
+        .single()\
+        .execute()
+    
+    if not webhook_result.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Webhook not found"
+        )
+    
+    # Limit to max 200
+    limit = min(limit, 200)
+    
+    # Build query
+    query = supabase.table('webhook_logs')\
+        .select('*')\
+        .eq('webhook_id', webhook_id)\
+        .order('created_at', desc=True)\
+        .limit(limit)
+    
+    # Apply success filter if provided
+    if success_filter is not None:
+        query = query.eq('success', success_filter)
+    
+    logs_result = query.execute()
+    
+    # Calculate stats
+    total_logs = len(logs_result.data)
+    successful = sum(1 for log in logs_result.data if log.get('success'))
+    failed = total_logs - successful
+    
+    avg_response_time = None
+    if total_logs > 0:
+        response_times = [log.get('response_time_ms') for log in logs_result.data if log.get('response_time_ms')]
+        if response_times:
+            avg_response_time = int(sum(response_times) / len(response_times))
+    
+    return {
+        "webhook_id": webhook_id,
+        "webhook_name": webhook_result.data['name'],
+        "webhook_url": webhook_result.data['url'],
+        "logs": logs_result.data,
+        "stats": {
+            "total": total_logs,
+            "successful": successful,
+            "failed": failed,
+            "success_rate": round((successful / total_logs * 100), 1) if total_logs > 0 else 0,
+            "avg_response_time_ms": avg_response_time
+        }
+    }
