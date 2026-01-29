@@ -20,6 +20,7 @@ export class SessionManager {
     private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
     private settings: Map<string, SessionSettings> = new Map();
     private presenceIntervals: Map<string, NodeJS.Timeout> = new Map();
+    private keepaliveTimers: Map<string, NodeJS.Timeout> = new Map();
 
     constructor(redis: Redis, authDir: string = './auth_state') {
         this.redis = redis;
@@ -225,6 +226,9 @@ export class SessionManager {
                     payload: { phone_number: phoneNumber }
                 })
             );
+
+            // Start keepalive to maintain connection
+            this.startKeepalive(sessionId);
         }
 
         // Connection closed
@@ -255,6 +259,13 @@ export class SessionManager {
                     await this.handleBadSession(sessionId);
                     break;
 
+                case DisconnectReason.restartRequired:
+                    // Error 515 - WhatsApp requires restart (stream error)
+                    // This is NOT a fatal error, just reconnect immediately
+                    logger.warn({ sessionId }, 'Stream error (515) - restarting connection');
+                    await this.attemptReconnect(sessionId);
+                    break;
+
                 case DisconnectReason.connectionClosed:
                 case DisconnectReason.connectionLost:
                 case DisconnectReason.timedOut:
@@ -267,6 +278,9 @@ export class SessionManager {
 
     private async handleLoggedOut(sessionId: string): Promise<void> {
         logger.info({ sessionId }, 'Session logged out by user');
+
+        // Stop keepalive
+        this.stopKeepalive(sessionId);
 
         // Delete auth state
         await this.deleteAuthState(sessionId);
@@ -289,6 +303,9 @@ export class SessionManager {
     private async handleConnectionReplaced(sessionId: string): Promise<void> {
         logger.info({ sessionId }, 'Session replaced (logged in elsewhere)');
 
+        // Stop keepalive
+        this.stopKeepalive(sessionId);
+
         // Keep auth state (user might want to reconnect)
         this.sessions.delete(sessionId);
         this.reconnectAttempts.delete(sessionId);
@@ -304,6 +321,9 @@ export class SessionManager {
 
     private async handleBadSession(sessionId: string): Promise<void> {
         logger.error({ sessionId }, 'Bad session detected - deleting auth state');
+
+        // Stop keepalive
+        this.stopKeepalive(sessionId);
 
         await this.deleteAuthState(sessionId);
         this.sessions.delete(sessionId);
@@ -548,6 +568,76 @@ export class SessionManager {
 
                 this.presenceIntervals.set(sessionId, interval);
             }
+        }
+    }
+
+    /**
+     * Start keepalive to maintain connection health
+     * Pings WhatsApp every 30s and updates DB timestamp every 2 minutes
+     */
+    private startKeepalive(sessionId: string): void {
+        // Clear any existing keepalive
+        this.stopKeepalive(sessionId);
+
+        const sock = this.sessions.get(sessionId);
+        if (!sock) return;
+
+        logger.info({ sessionId }, 'Starting keepalive');
+
+        let updateCounter = 0;
+
+        const keepaliveInterval = setInterval(async () => {
+            const s = this.sessions.get(sessionId);
+
+            if (!s) {
+                // Session no longer exists, clear interval
+                clearInterval(keepaliveInterval);
+                this.keepaliveTimers.delete(sessionId);
+                return;
+            }
+
+            try {
+                // Send presence update to keep connection alive
+                await s.sendPresenceUpdate('available');
+
+                // Update DB timestamp every 2 minutes (4 * 30s = 2 minutes)
+                updateCounter++;
+                if (updateCounter >= 4) {
+                    updateCounter = 0;
+                    await this.updateSessionLastActive(sessionId);
+                }
+            } catch (error: any) {
+                logger.error({ sessionId, error: error.message }, 'Keepalive ping failed');
+            }
+        }, 30000); // 30 seconds
+
+        this.keepaliveTimers.set(sessionId, keepaliveInterval);
+    }
+
+    /**
+     * Stop keepalive for a session
+     */
+    private stopKeepalive(sessionId: string): void {
+        const existing = this.keepaliveTimers.get(sessionId);
+        if (existing) {
+            clearInterval(existing);
+            this.keepaliveTimers.delete(sessionId);
+            logger.info({ sessionId }, 'Stopped keepalive');
+        }
+    }
+
+    /**
+     * Update session last_active timestamp in database
+     */
+    private async updateSessionLastActive(sessionId: string): Promise<void> {
+        try {
+            const supabase = getSupabaseClient();
+            await supabase
+                .from('whatsapp_sessions')
+                .update({ last_active: new Date().toISOString() })
+                .eq('id', sessionId);
+        } catch (error: any) {
+            logger.error({ sessionId, error: error.message }, 'Failed to update last_active');
         }
     }
 
