@@ -72,12 +72,19 @@ async function main(): Promise<void> {
 // Handle uncaught errors
 process.on('uncaughtException', (error) => {
     logger.fatal({ error }, '❌ Uncaught exception');
-    process.exit(1);
+    // Only exit on truly fatal errors, not on recoverable socket/network errors
+    const msg = error?.message || '';
+    if (msg.includes('ENOMEM') || msg.includes('Cannot find module')) {
+        process.exit(1);
+    }
+    // Log but don't crash - sessions will handle their own reconnection
+    logger.warn({ error }, 'Process continuing after uncaught exception');
 });
 
 process.on('unhandledRejection', (reason) => {
-    logger.fatal({ reason }, '❌ Unhandled rejection');
-    process.exit(1);
+    // NEVER exit on unhandled rejections - this kills all active sessions
+    // Common sources: socket errors, Redis timeouts, presence update failures
+    logger.error({ reason }, '⚠️ Unhandled rejection (non-fatal)');
 });
 
 // Start the application

@@ -11,6 +11,7 @@ import QRCode from 'qrcode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { SessionSettings } from './types.js';
+import { InboundMessageHandler } from '../handlers/inbound-message-handler.js';
 
 export class SessionManager {
     private sessions: Map<string, any> = new Map();
@@ -44,12 +45,40 @@ export class SessionManager {
     }
 
     /**
+     * Cleanly close an existing socket and remove all its listeners
+     */
+    private async cleanupSocket(sessionId: string): Promise<void> {
+        const existingSocket = this.sessions.get(sessionId);
+        if (existingSocket) {
+            try {
+                // Remove all event listeners to prevent ghost handlers
+                existingSocket.ev.removeAllListeners('connection.update');
+                existingSocket.ev.removeAllListeners('creds.update');
+                existingSocket.ev.removeAllListeners('messages.upsert');
+                existingSocket.ev.removeAllListeners('call');
+                // Close the WebSocket connection
+                existingSocket.end(undefined);
+            } catch (err: any) {
+                logger.warn({ sessionId, error: err.message }, 'Error during socket cleanup (non-fatal)');
+            }
+            this.sessions.delete(sessionId);
+        }
+
+        // Also stop keepalive and presence intervals
+        this.stopKeepalive(sessionId);
+        this.stopPresenceInterval(sessionId);
+    }
+
+    /**
      * Initialize a new WhatsApp session
      */
     async initSession(sessionId: string, userId: string): Promise<void> {
         logger.info({ sessionId, userId }, 'Initializing WhatsApp session');
 
         try {
+            // Clean up any existing socket before creating a new one
+            await this.cleanupSocket(sessionId);
+
             // Setup auth state (persistent storage)
             const authFolder = path.join(this.authDir, sessionId);
             const { state, saveCreds } = await useMultiFileAuthState(authFolder);
@@ -128,7 +157,6 @@ export class SessionManager {
                     for (const msg of messages) {
                         try {
                             // Story 3.4: Inbound Message Handling
-                            const { InboundMessageHandler } = await import('../handlers/inbound-message-handler.js');
                             const inboundHandler = new InboundMessageHandler(this.redis);
                             await inboundHandler.handleMessage(sock, sessionId, msg);
 
@@ -268,6 +296,10 @@ export class SessionManager {
                 statusCode
             }, 'Session disconnected');
 
+            // ALWAYS stop keepalive and presence on ANY disconnect
+            this.stopKeepalive(sessionId);
+            this.stopPresenceInterval(sessionId);
+
             // Handle different disconnect reasons
             switch (disconnectReason) {
                 case DisconnectReason.loggedOut:
@@ -305,9 +337,6 @@ export class SessionManager {
     private async handleLoggedOut(sessionId: string): Promise<void> {
         logger.info({ sessionId }, 'Session logged out by user');
 
-        // Stop keepalive
-        this.stopKeepalive(sessionId);
-
         // Delete auth state
         await this.deleteAuthState(sessionId);
 
@@ -329,9 +358,6 @@ export class SessionManager {
     private async handleConnectionReplaced(sessionId: string): Promise<void> {
         logger.info({ sessionId }, 'Session replaced (logged in elsewhere)');
 
-        // Stop keepalive
-        this.stopKeepalive(sessionId);
-
         // Keep auth state (user might want to reconnect)
         this.sessions.delete(sessionId);
         this.reconnectAttempts.delete(sessionId);
@@ -347,9 +373,6 @@ export class SessionManager {
 
     private async handleBadSession(sessionId: string): Promise<void> {
         logger.error({ sessionId }, 'Bad session detected - deleting auth state');
-
-        // Stop keepalive
-        this.stopKeepalive(sessionId);
 
         await this.deleteAuthState(sessionId);
         this.sessions.delete(sessionId);
@@ -402,9 +425,17 @@ export class SessionManager {
         // Update status to connecting
         await this.updateSessionStatus(sessionId, 'connecting');
 
+        // Clear any existing reconnect timer to avoid duplicates
+        const existingTimer = this.reconnectTimers.get(sessionId);
+        if (existingTimer) {
+            clearTimeout(existingTimer);
+        }
+
         // Schedule reconnection
         const timer = setTimeout(async () => {
             try {
+                this.reconnectTimers.delete(sessionId);
+
                 logger.info({
                     sessionId,
                     attempt: attempts + 1
@@ -417,12 +448,12 @@ export class SessionManager {
                 }
 
                 // Attempt to restore session
+                // NOTE: Don't reset reconnect counter here - the socket isn't
+                // actually connected yet. Counter is reset in handleConnectionUpdate
+                // when connection === 'open' fires (line that calls reconnectAttempts.delete)
                 await this.restoreSession(sessionId, session.user_id);
 
-                // Reset attempts on success
-                this.reconnectAttempts.delete(sessionId);
-
-                logger.info({ sessionId }, 'Reconnection successful');
+                logger.info({ sessionId }, 'Reconnection attempt initiated (awaiting connection)');
 
             } catch (err: any) {
                 logger.error({
@@ -568,31 +599,28 @@ export class SessionManager {
         }
     }
 
-    private handleAlwaysOnline(sessionId: string, enabled: boolean): void {
-        // Clear existing interval
-        if (this.presenceIntervals.has(sessionId)) {
-            clearInterval(this.presenceIntervals.get(sessionId)!);
+    private stopPresenceInterval(sessionId: string): void {
+        const existing = this.presenceIntervals.get(sessionId);
+        if (existing) {
+            clearInterval(existing);
             this.presenceIntervals.delete(sessionId);
         }
+    }
+
+    private handleAlwaysOnline(sessionId: string, enabled: boolean): void {
+        // Clear existing interval
+        this.stopPresenceInterval(sessionId);
 
         if (enabled) {
             const sock = this.sessions.get(sessionId);
             if (sock) {
                 // Send immediate presence
-                sock.sendPresenceUpdate('available');
+                sock.sendPresenceUpdate('available').catch(() => {});
                 logger.info({ sessionId }, 'Set presence to available');
 
-                // Set interval to keep it alive every 30s
-                const interval = setInterval(() => {
-                    const s = this.sessions.get(sessionId);
-                    if (s) {
-                        s.sendPresenceUpdate('available');
-                    } else {
-                        clearInterval(interval);
-                    }
-                }, 30000);
-
-                this.presenceIntervals.set(sessionId, interval);
+                // NOTE: Don't create a separate interval here -
+                // the keepalive timer already sends presence updates every 30s.
+                // This avoids double presence pings which can trigger WhatsApp rate limiting.
             }
         }
     }
